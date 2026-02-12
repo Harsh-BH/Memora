@@ -151,7 +151,18 @@ func (s *SurprisalEngine) Segment(ctx context.Context, userID string, text strin
 		threshold := stats.threshold(s.gamma)
 		isBoundary := surprisal > threshold && tokenCount >= s.minTokens
 
-		// Also force boundary at max token limit.
+		// ADDED: Only allow boundaries at sentence endings to prevent fragmentation
+		// Check if current token is a sentence-ending punctuation
+		isSentenceEnd := strings.HasSuffix(strings.TrimSpace(tp.Token), ".") ||
+			strings.HasSuffix(strings.TrimSpace(tp.Token), "!") ||
+			strings.HasSuffix(strings.TrimSpace(tp.Token), "?")
+
+		// Override: only create boundary if at sentence end
+		if isBoundary && !isSentenceEnd {
+			isBoundary = false
+		}
+
+		// Also force boundary at max token limit (but still prefer sentence end).
 		if tokenCount >= s.maxTokens {
 			isBoundary = true
 		}

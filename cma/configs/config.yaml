@@ -32,10 +32,10 @@ llm:
   temperature: 0.1
 
 segmentation:
-  gamma: 1.5
+  gamma: 2.5
   window_size: 50
-  min_episode_tokens: 20
-  max_episode_tokens: 2048
+  min_episode_tokens: 50
+  max_episode_tokens: 500
 
 knapsack:
   token_budget: 4096
@@ -43,7 +43,7 @@ knapsack:
   lambda_init: 0.001
 
 dig:
-  min_score: 0.0
+  min_score: -0.5
   fallback_enabled: true
 
 consolidation:
