@@ -31,6 +31,9 @@ type GraphStore interface {
 	// closes its validity window.
 	ResolveConflict(ctx context.Context, conflict models.ConflictRecord, decayRate float64) error
 
+	// GetStats retrieves statistics about the knowledge graph.
+	GetStats(ctx context.Context, userID string) (map[string]interface{}, error)
+
 	// Close releases database resources.
 	Close(ctx context.Context) error
 }

@@ -269,6 +269,37 @@ func (n *Neo4jStore) FindConflicts(ctx context.Context, userID string, triple mo
 	return conflicts, result.Err()
 }
 
+// GetStats retrieves statistics about the knowledge graph.
+func (n *Neo4jStore) GetStats(ctx context.Context, userID string) (map[string]interface{}, error) {
+	session := n.driver.NewSession(ctx, neo4j.SessionConfig{DatabaseName: n.database, AccessMode: neo4j.AccessModeRead})
+	defer session.Close(ctx)
+
+	cypher := `
+		MATCH (n:Entity {user_id: $user_id})
+		WITH count(n) as nodes
+		MATCH (s:Entity {user_id: $user_id})-[r:RELATES_TO]->(o:Entity)
+		WHERE r.valid_to IS NULL OR r.valid_to > datetime()
+		RETURN nodes, count(r) as edges
+	`
+
+	result, err := session.Run(ctx, cypher, map[string]any{"user_id": userID})
+	if err != nil {
+		return nil, fmt.Errorf("neo4j stats: %w", err)
+	}
+
+	if result.Next(ctx) {
+		rec := result.Record()
+		nodes, _ := rec.Get("nodes")
+		edges, _ := rec.Get("edges")
+		return map[string]interface{}{
+			"nodes": nodes,
+			"edges": edges,
+		}, nil
+	}
+
+	return map[string]interface{}{"nodes": 0, "edges": 0}, nil
+}
+
 // ResolveConflict applies temporal decay to an old relationship by closing
 // its valid_to window and reducing its confidence.
 func (n *Neo4jStore) ResolveConflict(ctx context.Context, conflict models.ConflictRecord, decayRate float64) error {

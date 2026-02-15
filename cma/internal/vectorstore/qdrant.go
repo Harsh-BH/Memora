@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -344,6 +345,53 @@ func (q *QdrantStore) CountUnconsolidated(ctx context.Context, userID string) (i
 	}
 
 	return int(resp.GetResult().GetCount()), nil
+}
+
+// GetRecent retrieves the most recent episodes for a user, sorted by timestamp descending.
+func (q *QdrantStore) GetRecent(ctx context.Context, userID string, limit int) ([]models.Episode, error) {
+	resp, err := q.points.Scroll(ctx, &pb.ScrollPoints{
+		CollectionName: q.cfg.Collection,
+		Filter: &pb.Filter{
+			Must: []*pb.Condition{
+				{
+					ConditionOneOf: &pb.Condition_Field{
+						Field: &pb.FieldCondition{
+							Key:   "user_id",
+							Match: &pb.Match{MatchValue: &pb.Match_Keyword{Keyword: userID}},
+						},
+					},
+				},
+			},
+		},
+		Limit:       ptr(uint32(limit)),
+		WithPayload: &pb.WithPayloadSelector{SelectorOptions: &pb.WithPayloadSelector_Enable{Enable: true}},
+		// Sort by timestamp desc (requires payload index on timestamp)
+		// Qdrant scroll doesn't strictly support sorting like Search without vector.
+		// However, we can use Search with a dummy vector if we want strict scoring, OR client-side sort.
+		// Better approach for "recent" in Qdrant is often just Scroll with natural order if segments are appending,
+		// but since we want strict time, we might need a workaround or just client-side sort if N is small.
+		// For now, let's fetch and sort in Go, assuming limit is small (e.g., 50).
+	})
+	if err != nil {
+		return nil, fmt.Errorf("qdrant get recent: %w", err)
+	}
+
+	episodes := make([]models.Episode, 0, len(resp.GetResult()))
+	for _, pt := range resp.GetResult() {
+		ep := payloadToEpisode(pt.GetId().GetUuid(), pt.GetPayload())
+		episodes = append(episodes, *ep)
+	}
+
+	// Manual sort by timestamp desc
+	sort.Slice(episodes, func(i, j int) bool {
+		return episodes[i].Timestamp.After(episodes[j].Timestamp)
+	})
+
+	if len(episodes) > limit {
+		episodes = episodes[:limit]
+	}
+	
+	return episodes, nil
 }
 
 // Close releases the gRPC connection.

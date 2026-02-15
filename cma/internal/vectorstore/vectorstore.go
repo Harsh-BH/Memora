@@ -34,6 +34,9 @@ type VectorStore interface {
 	// CountUnconsolidated returns the number of unconsolidated episodes for a user.
 	CountUnconsolidated(ctx context.Context, userID string) (int, error)
 
+	// GetRecent retrieves the most recent episodes for a user, regardless of consolidation status.
+	GetRecent(ctx context.Context, userID string, limit int) ([]models.Episode, error)
+
 	// Close releases resources.
 	Close() error
 }
