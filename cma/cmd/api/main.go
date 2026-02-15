@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 	"time"
 
@@ -47,9 +48,12 @@ func main() {
 	}
 
 	// --- Logger ---
-	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-		Level: slog.LevelInfo,
-	})))
+	logBuffer := NewLogBuffer(50)
+	multiHandler := NewMultiHandler(
+		slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}),
+		logBuffer,
+	)
+	slog.SetDefault(slog.New(multiHandler))
 	slog.Info("CMA starting", "version", version)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -252,6 +256,77 @@ func main() {
 			c.JSON(http.StatusOK, resp)
 		})
 
+		// Hippocampus Stats Endpoint.
+		v1.GET("/hippocampus", func(c *gin.Context) {
+			userID := c.Query("user_id")
+			if userID == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "user_id required"})
+				return
+			}
+
+			episodes, err := qdrantStore.GetRecent(c.Request.Context(), userID, 50)
+			if err != nil {
+				slog.Error("hippocampus fetch failed", "error", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "fetch failed"})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{
+				"episodes": episodes,
+				"stats":    gin.H{"total": len(episodes)}, // Placeholder for total count if expensive
+			})
+		})
+
+		// Neocortex Stats Endpoint.
+		v1.GET("/neocortex", func(c *gin.Context) {
+			userID := c.Query("user_id")
+			if userID == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "user_id required"})
+				return
+			}
+
+			stats, err := neo4jStore.GetStats(c.Request.Context(), userID)
+			if err != nil {
+				slog.Error("neocortex stats failed", "error", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "fetch failed"})
+				return
+			}
+
+			c.JSON(http.StatusOK, stats)
+		})
+
+		// System Logs Endpoint.
+		v1.GET("/system/logs", func(c *gin.Context) {
+			logs := logBuffer.GetLogs()
+			c.JSON(http.StatusOK, logs)
+		})
+
+		// Workspace Context Endpoint.
+		v1.GET("/workspace/context", func(c *gin.Context) {
+			// In a real system, this would fetch current context based on user/session.
+			// For now, we return a static/simulated context or fetch the last query.
+			userID := c.Query("user_id")
+			if userID == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "user_id required"})
+				return
+			}
+
+			// TODO: Add strict "context" retrieval from Workspace service if available.
+			// For now, let's return some stats about the workspace.
+			
+			// Mock data structure matching frontend expectations or new design
+			c.JSON(http.StatusOK, gin.H{
+				"id":           "ws_" + userID,
+				"total_tokens": 2405, // TODO: Get from metrics or state
+				"token_budget": 4096,
+				"items": []gin.H{
+					{"id": "kn_1", "content": "Query: Diff b/w Hippocampus & Neocortex", "weight": 12, "value": 0.99, "status": "kept"},
+					{"id": "kn_2", "content": "[Graph] Hippocampus -> stores -> Episodes", "weight": 45, "value": 0.85, "status": "kept"},
+					{"id": "kn_4", "content": "Prev Turn: User asked about architecture", "weight": 156, "value": 0.50, "status": "kept"},
+				},
+			})
+		})
+
 		// Admin: manually trigger consolidation.
 		v1.POST("/admin/consolidate", func(c *gin.Context) {
 			userID := c.Query("user_id")
@@ -321,3 +396,110 @@ func main() {
 	cancel()
 	slog.Info("CMA shutdown complete")
 }
+
+// --- Log Buffer Implementation ---
+
+type LogEntry struct {
+	Timestamp string `json:"ts"`
+	Level     string `json:"level"`
+	Module    string `json:"module"`
+	Message   string `json:"msg"`
+}
+
+type LogBuffer struct {
+	size    int
+	buffer  []LogEntry
+	mu      sync.Mutex
+}
+
+func NewLogBuffer(size int) *LogBuffer {
+	return &LogBuffer{
+		size:   size,
+		buffer: make([]LogEntry, 0, size),
+	}
+}
+
+func (lb *LogBuffer) Handle(ctx context.Context, r slog.Record) error {
+	level := r.Level.String()
+	msg := r.Message
+	module := "System"
+
+	r.Attrs(func(a slog.Attr) bool {
+		if a.Key == "module" {
+			module = a.Value.String()
+		}
+		return true
+	})
+
+	entry := LogEntry{
+		Timestamp: r.Time.Format("15:04:05"),
+		Level:     level,
+		Module:    module,
+		Message:   msg,
+	}
+
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	if len(lb.buffer) >= lb.size {
+		lb.buffer = lb.buffer[1:]
+	}
+	lb.buffer = append(lb.buffer, entry)
+	return nil
+}
+
+func (lb *LogBuffer) WithAttrs(attrs []slog.Attr) slog.Handler { return lb }
+func (lb *LogBuffer) WithGroup(name string) slog.Handler   { return lb }
+func (lb *LogBuffer) Enabled(ctx context.Context, level slog.Level) bool { return true }
+
+func (lb *LogBuffer) GetLogs() []LogEntry {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+	// Return a copy
+	logs := make([]LogEntry, len(lb.buffer))
+	copy(logs, lb.buffer)
+	return logs
+}
+
+// --- MultiHandler ---
+
+type MultiHandler struct {
+	handlers []slog.Handler
+}
+
+func NewMultiHandler(handlers ...slog.Handler) *MultiHandler {
+	return &MultiHandler{handlers: handlers}
+}
+
+func (m *MultiHandler) Enabled(ctx context.Context, level slog.Level) bool {
+	for _, h := range m.handlers {
+		if h.Enabled(ctx, level) {
+			return true
+		}
+	}
+	return false
+}
+
+func (m *MultiHandler) Handle(ctx context.Context, r slog.Record) error {
+	for _, h := range m.handlers {
+		_ = h.Handle(ctx, r.Clone())
+	}
+	return nil
+}
+
+func (m *MultiHandler) WithAttrs(attrs []slog.Attr) slog.Handler {
+	handlers := make([]slog.Handler, len(m.handlers))
+	for i, h := range m.handlers {
+		handlers[i] = h.WithAttrs(attrs)
+	}
+	return NewMultiHandler(handlers...)
+}
+
+func (m *MultiHandler) WithGroup(name string) slog.Handler {
+	handlers := make([]slog.Handler, len(m.handlers))
+	for i, h := range m.handlers {
+		handlers[i] = h.WithGroup(name)
+	}
+	return NewMultiHandler(handlers...)
+}
+
