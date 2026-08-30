@@ -148,6 +148,18 @@ func (q *QdrantStore) Upsert(ctx context.Context, episodes []models.Episode) err
 		})
 	}
 
+	// BUG, found 2026-08-31 while building cma/eval: Wait is unset (nil), so
+	// this call does not block until the write is applied and indexed.
+	// Measured directly: GetRecent/Search immediately after this call on a
+	// brand-new collection can return 0 rows for points that ARE correctly
+	// stored moments later. Any caller that upserts then immediately reads
+	// back (ingest -> query in the same request, a test, a script) can
+	// observe a false "not found." Set Wait: ptr(true) (see ptr() below) to
+	// fix, at the cost of Upsert blocking until indexing completes -- evaluate that
+	// latency cost before flipping it on the hot ingest path. Worked around
+	// in cma/eval with a poll loop (retrieval_eval_test.go's waitForCount)
+	// rather than fixed here, since this call is also used by the live
+	// ingest path and changing its latency behavior deserves its own look.
 	_, err := q.points.Upsert(ctx, &pb.UpsertPoints{
 		CollectionName: q.cfg.Collection,
 		Points:         points,

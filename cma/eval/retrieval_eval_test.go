@@ -21,7 +21,6 @@ import (
 	"github.com/memora/cma/configs"
 	"github.com/memora/cma/internal/ingest"
 	"github.com/memora/cma/internal/llm"
-	"github.com/memora/cma/internal/metrics"
 	"github.com/memora/cma/internal/segmentation"
 	"github.com/memora/cma/internal/vectorstore"
 )
@@ -102,7 +101,7 @@ func TestRetrievalEvalRecallAndMRR(t *testing.T) {
 
 	segCfg := configs.SegmentationConfig{MinEpisodeTokens: 50, MaxEpisodeTokens: 500}
 	segmenter := segmentation.NewStructuralSegmenter(embedder, segCfg)
-	m := metrics.New()
+	m := sharedMetrics()
 	ingestSvc := ingest.NewService(segmenter, vectorDB, m)
 
 	// --- Ingest the corpus through the real, fixed pipeline ---
