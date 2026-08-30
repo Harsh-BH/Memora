@@ -13,20 +13,20 @@ import (
 )
 
 // Service orchestrates the ingest pipeline:
-// raw input → surprisal segmentation → embedding → Qdrant upsert.
+// raw input → structural segmentation → embedding → Qdrant upsert.
 //
 // This is the append-only episodic write path (hippocampal encoding).
 // All writes here are to the vector store only — graph writes are
 // strictly reserved for the consolidation (Sleep) cycle.
 type Service struct {
-	segmenter  *segmentation.SurprisalEngine
+	segmenter  *segmentation.StructuralSegmenter
 	vectorDB   vectorstore.VectorStore
 	metrics    *metrics.Metrics
 }
 
 // NewService creates a new ingest pipeline service.
 func NewService(
-	segmenter *segmentation.SurprisalEngine,
+	segmenter *segmentation.StructuralSegmenter,
 	vectorDB vectorstore.VectorStore,
 	m *metrics.Metrics,
 ) *Service {
@@ -51,9 +51,9 @@ func (s *Service) Ingest(ctx context.Context, userID string, content string, rol
 		"role", role,
 	)
 
-	// Step 1: Surprisal-based segmentation.
-	// This produces episodic fragments at event boundaries where
-	// S > μ + γσ (Bayesian Surprise threshold).
+	// Step 1: Structural segmentation (sentence boundaries packed into
+	// minTokens..maxTokens episodes -- see segmentation/structural.go for
+	// why this replaced the dead surprisal-based design).
 	episodes, err := s.segmenter.Segment(ctx, userID, content)
 	if err != nil {
 		return nil, fmt.Errorf("segmentation: %w", err)

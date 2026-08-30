@@ -114,11 +114,11 @@ func main() {
 
 	// --- Domain Services ---
 
-	// Segmentation engine (Bayesian Surprise).
-	surprisalEngine := segmentation.NewSurprisalEngine(llmProvider, cfg.Segmentation)
+	// Segmentation engine (deterministic sentence-boundary packing).
+	segmenter := segmentation.NewStructuralSegmenter(llmProvider, cfg.Segmentation)
 
 	// Ingest pipeline (append-only episodic writes).
-	ingestSvc := ingest.NewService(surprisalEngine, qdrantStore, m)
+	ingestSvc := ingest.NewService(segmenter, qdrantStore, m)
 
 	// Retrieval service (concurrent vector + graph).
 	retrievalSvc := retrieval.NewService(qdrantStore, neo4jStore, llmProvider, cfg.Retrieval, m)
