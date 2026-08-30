@@ -11,6 +11,7 @@ require (
 	github.com/qdrant/go-client v1.7.0
 	github.com/redis/go-redis/v9 v9.7.0
 	github.com/sashabaranov/go-openai v1.24.0
+	github.com/yalue/onnxruntime_go v1.35.0
 	google.golang.org/grpc v1.47.0
 	gopkg.in/yaml.v3 v3.0.1
 )

@@ -23,3 +23,7 @@ pnpm-debug.log*
 
 # typescript
 *.tsbuildinfo
+
+# downloaded runtime/model binaries (see cma/third_party/README.md to re-fetch)
+/cma/third_party/*
+!/cma/third_party/README.md
