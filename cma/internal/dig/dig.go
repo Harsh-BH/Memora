@@ -39,6 +39,14 @@ func NewReranker(provider llm.Provider, cfg configs.DIGConfig) *Reranker {
 
 // Rerank scores and filters retrieval results using Document Information Gain.
 // Returns only candidates with DIG > 0, sorted by DIG score descending.
+//
+// The true DIG score (llm.Provider.ScoreDIG, a two-call logprob delta) is no
+// longer reachable: it requires a logprobs-capable chat completions API, and
+// neither available provider offers one here (no OPENAI_API_KEY is set, and
+// Claude's Messages API exposes no logprobs surface at all -- a different,
+// permanent wall, not a missing key). Calling it would only ever hit the
+// existing error-fallback below, so heuristicScore is promoted to primary
+// instead of leaving a doomed call in the hot path.
 func (r *Reranker) Rerank(ctx context.Context, query string, candidates []models.RetrievalResult) ([]models.DIGCandidate, error) {
 	scored := make([]models.DIGCandidate, 0, len(candidates))
 
@@ -48,22 +56,9 @@ func (r *Reranker) Rerank(ctx context.Context, query string, candidates []models
 			continue
 		}
 
-		var digScore float64
-		var err error
-
-		// Try cross-encoder DIG scoring via LLM.
-		digScore, err = r.llmProvider.ScoreDIG(ctx, query, content)
-		if err != nil {
-			if !r.fallbackEnabled {
-				continue
-			}
-			// Fallback: heuristic scoring based on cosine similarity, recency, and surprisal.
-			digScore = r.heuristicScore(candidate)
-		}
-
 		scored = append(scored, models.DIGCandidate{
 			Result:   candidate,
-			DIGScore: digScore,
+			DIGScore: r.heuristicScore(candidate),
 			Content:  content,
 		})
 	}
@@ -84,11 +79,15 @@ func (r *Reranker) Rerank(ctx context.Context, query string, candidates []models
 	return filtered, nil
 }
 
-// heuristicScore computes a fallback DIG approximation when the LLM cross-encoder
-// is unavailable. Uses a combination of:
+// heuristicScore approximates DIG without an LLM call. Uses a combination of:
 //   - Cosine similarity score (from vector search)
 //   - Recency decay (exponential decay based on age)
-//   - Surprisal value (high-surprise events are more salient)
+//   - Importance and decay-factor weighting from consolidation
+//
+// No longer includes a surprisal term: the segmenter that produced
+// SurprisalValue was dead machinery (see segmentation/structural.go) and
+// every episode's value is now a neutral 0, so that term always weighted on
+// a constant. Dropped rather than left in place scoring nothing.
 func (r *Reranker) heuristicScore(result models.RetrievalResult) float64 {
 	score := result.Score // cosine similarity baseline
 
@@ -97,12 +96,6 @@ func (r *Reranker) heuristicScore(result models.RetrievalResult) float64 {
 		age := time.Since(result.Episode.Timestamp).Hours()
 		recencyBoost := math.Exp(-age / 24.0)
 		score += 0.3 * recencyBoost
-
-		// Surprisal boost: high-surprise events are memory landmarks.
-		if result.Episode.SurprisalValue > 0 {
-			surprisalBoost := math.Log1p(result.Episode.SurprisalValue) / 5.0
-			score += 0.2 * surprisalBoost
-		}
 
 		// Importance score contribution.
 		score += 0.1 * result.Episode.ImportanceScore
