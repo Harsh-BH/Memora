@@ -714,4 +714,107 @@ what it measured. Deleting an untracked file destroys its own evidence.
 
 ## 8. AMENDMENTS
 
-*(none — any amendment is appended here, dated, with its reason; nothing above is deleted)*
+*Additive only. Dated, with the reason. Nothing above is deleted.*
+
+### A1 — 2026-09-01 — §4.15's `Wait` rollback rule FIRED; `Wait` is now a config option
+
+§4.15 registered flipping `Wait: ptr(true)` on `Upsert` unconditionally, with the rollback rule
+*"a > 2× regression on [the `retrieval_eval` ingest wall clock] means `Wait` becomes a constructor
+option rather than an unconditional flag."* The measurement was taken as registered
+(**MEASURED-HERE**, `TestRetrievalEvalRecallAndMRR` ingest, 20 documents, 3 runs each):
+
+| | runs | median |
+|---|---|---|
+| `Wait` unset | 378 / 236 / 268 ms | **268 ms** |
+| `Wait` set | 813 / 722 / 759 ms | **759 ms** |
+
+759 / 268 = **2.83×**, over the threshold. **The registered rollback is therefore applied**:
+`Wait` became `configs.QdrantConfig.WaitForIndex`, default `false`. Re-verified after the
+rollback at 251 / 259 / 234 ms, back at baseline. The eval harness sets `WaitForIndex: true`;
+the live ingest path keeps its latency and its documented visibility caveat, guarded by
+`waitForCount`. `SetPayload` keeps `Wait` unconditionally — it is on the archive path, not the
+hot ingest path, and that is where the archive-then-verify guarantee is needed.
+
+The ingest wall clock is now logged by the eval test, so this rule stays checkable rather than
+living only in a commit message.
+
+### A2 — 2026-09-01 — `cmd/probe` ran; three PROVISIONAL numbers are STRUCK
+
+Per §4.10, `cma/eval/cmd/probe/main.go` re-derived the §0 table. Output frozen at
+`cma/eval/out/probe.json`, `gold_map.csv`, `ku_strict_ids.txt`.
+
+**REPRODUCED** (these may now be cited): d(stale gold, current gold) p50 = **0.5165** (recorded
+0.514); d(current gold, nearest non-gold) p50 = **0.2168** (recorded 0.217); dense top-1
+**5/70** with ranks p50 8 / p90 16 (exact); gold pairs within eps 0.3 **6/70**; a non-gold turn
+also within 0.30 in **60/70**; flat-cosine current-preference **33/70 = 47.1 %** (exact). The
+anti-correlation and the ~53 points of headroom H1 needs are therefore **MEASURED, not assumed**.
+
+**STRUCK, measured value stands** (§4.10: the script's value is authoritative):
+
+| quantity | measured | recorded |
+|---|---|---|
+| stale twin is #1 by IDF-weighted Jaccard | **23/70 = 32.9 %** | 15/70 = 21.4 % |
+| KU-strict n | **48** (31 numeric + 17 lexical) | 49 (32 + 17) |
+| turns truncated at 256 wordpieces | **43.7 %** | 44.9 % |
+
+Three disclosures, made rather than buried:
+
+1. **The lexical top-1 rate came out HIGHER, which is favourable to D2, the pre-registered
+   primary arm, and it was measured after registration.** It cannot have influenced the choice:
+   §1.2 fixes D2 regardless and says in terms that the primary arm does not change even if the
+   lexical > dense ordering fails to reproduce. It reproduced, more strongly. The rank
+   percentiles reproduce **exactly** (p50 2, p90 7), so the difference sits only at rank 1 —
+   most likely a tie-break or tokenizer detail of the deleted original. `cmd/probe` shares
+   `NewIDFSimilarity` with the D2 detector, so it cannot be measuring a different similarity
+   than the arm uses.
+2. **KU-strict is 48, not 49**, under the one reading of the design pass's rule that could be
+   written down (documented in `kuStrict()`). This is precisely the ambiguity §1.2 cited when it
+   demoted KU-strict to EXPLORATORY. The primary set does not move.
+3. **Truncation is now measured with the model's own WordPiece tokenizer** (`llm.CountTokens`)
+   rather than the design pass's character-count proxy, which is why it differs.
+
+Also **MEASURED-HERE**: embedder throughput 86.0 texts/s at 128 wp and 45.5 texts/s at 256 wp
+(300 real turns, batch size 1, CPU), i.e. 2.1 and 4.0 minutes for the 10,960-turn corpus.
+
+### A3 — 2026-09-01 — corpus fact §4.2 did not record: 32 answers are JSON numbers
+
+**MEASURED-HERE:** 32 of the 500 `answer` fields are JSON **numbers**, not strings (e.g.
+`question_id` `0a995998` has `answer` `3`). A loader typing that field as `string` fails to parse
+the registered corpus outright. It is read as `json.RawMessage` and kept verbatim. Nothing in the
+experiment consumes it — there is no judge and no generation step (§6.3) — so this changes no
+metric.
+
+### A4 — 2026-09-01 — what is built, and what is registered but NOT yet built
+
+Recorded so that absence is a stated scope limit rather than a silent one. **No arm has been run;
+no SR@1 value exists for any arm.**
+
+**Built and green:** the archive path (`ArchiveByIDs`, `CountByStatus`, `Search`'s `MustNot`);
+the corpus loader with V8 sha verification; all nine arms of §2 with the §4.6 θ\* rate rule;
+PF0–PF4; V1–V9; the mandatory §3.2 attribution table; the §4.3 abstention row; G1's raw-HTTP
+archived count; `cmd/probe`. The full experiment is gated behind
+`MEMORA_RUN_FORGET_EXPERIMENT=1` so that a routine `go test ./...` cannot produce the
+confirmatory number as a side effect; a smoke run exercises the entire machinery and every
+self-check on every suite run.
+
+**Registered but NOT built.** Each is EXPLORATORY and carries no confirm/falsify weight, so H1 is
+fully testable without them:
+
+- **The pooled secondary row (§4.13).** `cma_eval_forget_pooled`, pooled IDF, its own detector
+  pass and archive application.
+- **The LoCoMo control gate (§4.13).** The loader and its mandatory gist-strip **are** built and
+  tested (§4.1 requires the strip be enforced in code, not prose); the cat2 recall@5 arm is not.
+- **A KU-strict scored row.** `cmd/probe` freezes the ID list; no arm scores against it.
+- **Track B (§5.3).** Out of scope for this pass. §5.3's evidence-preservation rule was honoured:
+  `eval/graph_attach_probe_test.go` is now committed, so deleting it later leaves a record.
+
+### A5 — 2026-09-01 — the eval collection leak was fixed, and it had already bitten
+
+§4.12 required the `t.Cleanup` collection drop and warned that ~3 accumulated collections make
+Qdrant refuse connections on both ports. That happened during this work, exactly as described:
+`Too many open files (os error 24)`, both ports dead, every test failing at `EnsureCollection`
+with `failed to receive server preface within timeout`. Recovery was the documented one —
+`docker restart cma_qdrant` (restart, never recreate) plus a `curl -X DELETE` per stale
+collection. `dropCollection` is now wired into **every** test in `cma/eval` that creates a
+collection, not only the new harness. The container-side root cause (soft `RLIMIT_NOFILE` 1024)
+is unchanged and still the real fix.
