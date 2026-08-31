@@ -76,15 +76,38 @@ func tokenSet(text string) map[string]bool {
 	return out
 }
 
+// TokenizeSimple exposes bm25.go's tokenizer -- lowercase, split on any
+// non-letter non-digit rune -- because 4.5 names it as D2's tokenizer and
+// cmd/probe must use the same one, not a lookalike.
+func TokenizeSimple(text string) []string { return tokenizeSimple(text) }
+
+// NewIDFSimilarity builds simIDF over one instance's turns and returns it as a
+// scorer. The BM25 index and the token sets are built ONCE here rather than per
+// pair, and both the D2 detector and cmd/probe call this, so the probe cannot
+// drift into measuring a slightly different similarity than the arm uses.
+//
+// The IDF corpus is exactly the turns passed in: PER-INSTANCE, per 4.7. The
+// primary arm's memory is per-instance (user_id = question_id), so the detector
+// must see exactly what a per-user deployment would see; a pooled IDF would be
+// information from other users' memories that no such system has. Registered
+// limitation: idf over ~24 documents is statistically thin, so the
+// discrimination is weak, and that is a validity limit of D2 stated up front.
+func NewIDFSimilarity(turns []Turn) func(a, b Turn) float64 {
+	docs := make([]string, len(turns))
+	sets := make(map[string]map[string]bool, len(turns))
+	for i, t := range turns {
+		docs[i] = t.Content
+		sets[t.ID] = tokenSet(t.Content)
+	}
+	idf := NewBM25(docs).idf
+	return func(a, b Turn) float64 { return idfJaccard(sets[a.ID], sets[b.ID], idf) }
+}
+
 // NearestOlderIDF is arm D2. For each turn t, u* is the strictly-older turn
 // with the highest simIDF; u* is archived iff simIDF(t,u*) >= theta.
 //
 // Registered details, none of them adjustable here:
-//   - IDF corpus is PER-INSTANCE (4.7): the turns passed in, and nothing else.
-//     The primary arm's memory is per-instance (user_id = question_id), so the
-//     detector must see exactly what a per-user deployment would see. The
-//     limitation is stated up front: idf over ~24 documents is statistically
-//     thin and its discrimination is weak.
+//   - IDF corpus is PER-INSTANCE (4.7); see NewIDFSimilarity.
 //   - Sign convention (4.5): D2 thresholds a SIMILARITY with >=.
 //   - Tie-break: the u earliest in the 4.4 order. turns must arrive in that
 //     order (Turns returns it), and the strict > below keeps the first seen.
@@ -97,19 +120,12 @@ func NearestOlderIDF(turns []Turn, theta float64) []Pair {
 	if len(turns) < 2 {
 		return nil
 	}
-	docs := make([]string, len(turns))
-	sets := make([]map[string]bool, len(turns))
-	for i, t := range turns {
-		docs[i] = t.Content
-		sets[i] = tokenSet(t.Content)
-	}
-	idf := NewBM25(docs).idf
-
+	sim := NewIDFSimilarity(turns)
 	var pairs []Pair
 	for i := 1; i < len(turns); i++ { // i == 0 has no strictly-older turn
 		best, bestScore := -1, math.Inf(-1)
 		for j := 0; j < i; j++ {
-			if s := idfJaccard(sets[i], sets[j], idf); s > bestScore {
+			if s := sim(turns[i], turns[j]); s > bestScore {
 				best, bestScore = j, s
 			}
 		}
