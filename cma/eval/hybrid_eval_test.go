@@ -118,6 +118,7 @@ func TestHybridRetrievalEvalWithLiveGraph(t *testing.T) {
 	if err := vectorDB.EnsureCollection(ctx); err != nil {
 		t.Fatalf("EnsureCollection: %v", err)
 	}
+	t.Cleanup(func() { dropCollection(t, collectionName) })
 
 	// Same credentials as configs/config.yaml's neo4j block.
 	graphDB, err := graphstore.NewNeo4jStore(configs.Neo4jConfig{
