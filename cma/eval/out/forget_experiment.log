@@ -1,0 +1,115 @@
+=== RUN   TestForgettingExperiment
+    forget_eval_test.go:93: CLEANUP: dropped Qdrant collection "cma_eval_forget"
+2026/09/01 02:12:11 INFO qdrant collection created collection=cma_eval_forget
+    forget_eval_test.go:208: === FORGETTING EXPERIMENT (FULL RUN) === collection "cma_eval_forget" dim 384, depth D=200, cutoff K=50
+    forget_eval_test.go:212: INGEST+RETRIEVE: 70 instances, 1640 turns, 0 newly embedded (rest cached), 689ms
+    forget_eval_test.go:213: INGEST+RETRIEVE: 398 instances, 8600 turns, 8149 newly embedded (rest cached), 3m8.426s
+    forget_eval_test.go:215: PF0 PASS: 20 points round-tripped with DecayFactor 1.0 and status pending
+    forget_eval_test.go:215: PF1 PASS: DIG's reranker collapses to cosine order on distinct scores with a constant recency term -- which is why the reranker is OFF in every arm
+    forget_eval_test.go:215: PF2 PASS: DecayFactor 0.0 annihilates the DIG score to exactly 0.0, as dig.go:104 dictates
+    forget_eval_test.go:215: PF3 PASS: v and 2v score identically (1.000000); cosine is scale-invariant as assumed
+    forget_eval_test.go:220: --- D2 theta* selection: archive rate over the 398 CONTROL instances, target rho*=0.0439 (4.6) ---
+    forget_eval_test.go:220:     theta=0.10  archived 4287 / 8600 turns = 0.4985   |rate - rho*| = 0.4546
+    forget_eval_test.go:220:     theta=0.15  archived 2780 / 8600 turns = 0.3233   |rate - rho*| = 0.2794
+    forget_eval_test.go:220:     theta=0.20  archived 1482 / 8600 turns = 0.1723   |rate - rho*| = 0.1284
+    forget_eval_test.go:220:     theta=0.25  archived 791 / 8600 turns = 0.0920   |rate - rho*| = 0.0481
+    forget_eval_test.go:220:     NOTE: theta* = 0.25 is a GRID ENDPOINT, i.e. the target rate lies outside the registered grid. The endpoint remains theta*. The grid is NOT extended -- extending it after seeing rates is the forking path the registration exists to close (4.6).
+    forget_eval_test.go:220:     theta*(D2) = 0.25 at control archive rate 0.0920
+    forget_eval_test.go:223: --- D1 theta* selection: archive rate over the 398 CONTROL instances, target rho*=0.0439 (4.6) ---
+    forget_eval_test.go:223:     theta=0.20  archived 1954 / 8600 turns = 0.2272   |rate - rho*| = 0.1833
+    forget_eval_test.go:223:     theta=0.30  archived 3922 / 8600 turns = 0.4560   |rate - rho*| = 0.4121
+    forget_eval_test.go:223:     theta=0.40  archived 4739 / 8600 turns = 0.5510   |rate - rho*| = 0.5071
+    forget_eval_test.go:223:     theta=0.50  archived 5080 / 8600 turns = 0.5907   |rate - rho*| = 0.5468
+    forget_eval_test.go:223:     NOTE: theta* = 0.20 is a GRID ENDPOINT, i.e. the target rate lies outside the registered grid. The endpoint remains theta*. The grid is NOT extended -- extending it after seeing rates is the forking path the registration exists to close (4.6).
+    forget_eval_test.go:223:     theta*(D1) = 0.20 at control archive rate 0.2272
+    forget_eval_test.go:263: --- ARM RAW [baseline] ---
+    forget_eval_test.go:263:     SR@1 = 0.4714 over 70 defined queries (0 undefined, evidence-found rate 1.0000)
+    forget_eval_test.go:263:     archived 0 turns; archive precision 0.0000, archive recall 0.0000
+    forget_eval_test.go:263: --- ARM D2 (theta*=0.25) [CONFIRMATORY] ---
+    forget_eval_test.go:263:     SR@1 = 0.4493 over 69 defined queries (1 undefined, evidence-found rate 0.9857)
+    forget_eval_test.go:263:     archived 148 turns; archive precision 0.0676, archive recall 0.1389
+    forget_eval_test.go:263:     pair-catch 5/70 = 0.0714 (anchored on a CURRENT gold, selected its own STALE gold). 3.1: this and delta-SR@1 are arithmetically LINKED, never two corroborating findings. Pairs: same-session 115 / cross-session 43
+    forget_eval_test.go:263:     attribution 2x2 (3.2):  own stale gold IN A -> SR@1=1: 9, SR@1=0: 1  |  NOT in A -> SR@1=1: 22, SR@1=0: 38
+    forget_eval_test.go:263: --- ARM D1 (theta=0.20) [EXPLORATORY] ---
+    forget_eval_test.go:263:     SR@1 = 0.4839 over 62 defined queries (8 undefined, evidence-found rate 0.8857)
+    forget_eval_test.go:263:     archived 400 turns; archive precision 0.0725, archive recall 0.4028
+    forget_eval_test.go:263:     pair-catch 4/70 = 0.0571 (anchored on a CURRENT gold, selected its own STALE gold). 3.1: this and delta-SR@1 are arithmetically LINKED, never two corroborating findings. Pairs: same-session 385 / cross-session 53
+    forget_eval_test.go:263:     attribution 2x2 (3.2):  own stale gold IN A -> SR@1=1: 20, SR@1=0: 9  |  NOT in A -> SR@1=1: 10, SR@1=0: 31
+    forget_eval_test.go:263: --- ARM D0 (shipped eps=0.3 minPts=3) [EXPLORATORY] ---
+    forget_eval_test.go:263:     SR@1 = 0.5682 over 44 defined queries (26 undefined, evidence-found rate 0.6286)
+    forget_eval_test.go:263:     archived 816 turns; archive precision 0.0564, archive recall 0.6389
+    forget_eval_test.go:263:     attribution 2x2 (3.2):  own stale gold IN A -> SR@1=1: 19, SR@1=0: 27  |  NOT in A -> SR@1=1: 6, SR@1=0: 18
+    forget_eval_test.go:263: --- ARM ORACLE [SELF-CHECK V2] ---
+    forget_eval_test.go:263:     SR@1 = 1.0000 over 70 defined queries (0 undefined, evidence-found rate 1.0000)
+    forget_eval_test.go:263:     archived 72 turns; archive precision 1.0000, archive recall 1.0000
+    forget_eval_test.go:263:     attribution 2x2 (3.2):  own stale gold IN A -> SR@1=1: 70, SR@1=0: 0  |  NOT in A -> SR@1=1: 0, SR@1=0: 0
+    forget_eval_test.go:263: --- ARM ANTI-ORACLE [SELF-CHECK V1] ---
+    forget_eval_test.go:263:     SR@1 = 0.0000 over 70 defined queries (0 undefined, evidence-found rate 1.0000)
+    forget_eval_test.go:263:     archived 70 turns; archive precision 0.0000, archive recall 0.0000
+    forget_eval_test.go:263:     attribution 2x2 (3.2):  own stale gold IN A -> SR@1=1: 0, SR@1=0: 0  |  NOT in A -> SR@1=1: 0, SR@1=0: 70
+    forget_eval_test.go:263: --- ARM FLOOR [SELF-CHECK V7] ---
+    forget_eval_test.go:263:     SR@1 = 1.0000 over 70 defined queries (0 undefined, evidence-found rate 1.0000)
+    forget_eval_test.go:263:     archived 822 turns; archive precision 0.0876, archive recall 1.0000
+    forget_eval_test.go:263:     attribution 2x2 (3.2):  own stale gold IN A -> SR@1=1: 70, SR@1=0: 0  |  NOT in A -> SR@1=1: 0, SR@1=0: 0
+    forget_eval_test.go:272: SELF-CHECKS: ORACLE=1.0000 (V2 wants 1.0), ANTI-ORACLE=0.0000 over 70 defined queries (V1 wants 0.0 and >= 35 defined), FLOOR=1.0000 (V7 wants 1.0), RAW evidence-found=1.0000 (V3 wants >= 0.95)
+    forget_eval_test.go:275: --- ARM RANDOM-ARCHIVE [mandatory H1 clause], 20 replicates, per-instance exact rate match ---
+    forget_eval_test.go:275:     seed 20260901: SR@1 = 0.4853 (148 archived)
+    forget_eval_test.go:275:     seed 20260902: SR@1 = 0.4412 (148 archived)
+    forget_eval_test.go:275:     seed 20260903: SR@1 = 0.4714 (148 archived)
+    forget_eval_test.go:275:     seed 20260904: SR@1 = 0.5000 (148 archived)
+    forget_eval_test.go:275:     seed 20260905: SR@1 = 0.4493 (148 archived)
+    forget_eval_test.go:275:     seed 20260906: SR@1 = 0.4429 (148 archived)
+    forget_eval_test.go:275:     seed 20260907: SR@1 = 0.5072 (148 archived)
+    forget_eval_test.go:275:     seed 20260908: SR@1 = 0.4706 (148 archived)
+    forget_eval_test.go:275:     seed 20260909: SR@1 = 0.4714 (148 archived)
+    forget_eval_test.go:275:     seed 20260910: SR@1 = 0.4286 (148 archived)
+    forget_eval_test.go:275:     seed 20260911: SR@1 = 0.4265 (148 archived)
+    forget_eval_test.go:275:     seed 20260912: SR@1 = 0.5000 (148 archived)
+    forget_eval_test.go:275:     seed 20260913: SR@1 = 0.5143 (148 archived)
+    forget_eval_test.go:275:     seed 20260914: SR@1 = 0.4857 (148 archived)
+    forget_eval_test.go:275:     seed 20260915: SR@1 = 0.4265 (148 archived)
+    forget_eval_test.go:275:     seed 20260916: SR@1 = 0.4429 (148 archived)
+    forget_eval_test.go:275:     seed 20260917: SR@1 = 0.4394 (148 archived)
+    forget_eval_test.go:275:     seed 20260918: SR@1 = 0.4714 (148 archived)
+    forget_eval_test.go:275:     seed 20260919: SR@1 = 0.4714 (148 archived)
+    forget_eval_test.go:275:     seed 20260920: SR@1 = 0.4286 (148 archived)
+    forget_eval_test.go:275:     RANDOM-ARCHIVE over 20 replicates: mean 0.4637, MAX 0.5143. D2* must beat the MAX (a one-sided permutation-style threshold at p ~ 1/21 = 0.048, exact).
+    forget_eval_test.go:275:     REGISTERED EXPECTATION (3.1): in the primary row R_X holds every unarchived turn, so SR@1 cannot see a non-gold archive and RANDOM's expected delta is about zero. A near-null RANDOM-ARCHIVE is a PASS, not a failed control.
+    forget_eval_test.go:278: --- ARM D3 (global recency prior) [EXPLORATORY rival], all 9 cells reported ---
+    forget_eval_test.go:278:     D3 is NOT a novel rival: force_recent_turns: 3 (configs/config.yaml:42) is already a recency prior in production.
+    forget_eval_test.go:278:     w=0.05 tau= 30d: SR@1 = 0.5143 over 70 defined
+    forget_eval_test.go:278:     w=0.05 tau= 90d: SR@1 = 0.5143 over 70 defined
+    forget_eval_test.go:278:     w=0.05 tau=365d: SR@1 = 0.5000 over 70 defined
+    forget_eval_test.go:278:     w=0.10 tau= 30d: SR@1 = 0.5714 over 70 defined
+    forget_eval_test.go:278:     w=0.10 tau= 90d: SR@1 = 0.5429 over 70 defined
+    forget_eval_test.go:278:     w=0.10 tau=365d: SR@1 = 0.5000 over 70 defined
+    forget_eval_test.go:278:     w=0.30 tau= 30d: SR@1 = 0.7429 over 70 defined
+    forget_eval_test.go:278:     w=0.30 tau= 90d: SR@1 = 0.7286 over 70 defined
+    forget_eval_test.go:278:     w=0.30 tau=365d: SR@1 = 0.6000 over 70 defined
+    forget_eval_test.go:278:     D3 best cell: w=0.30 tau=30d at SR@1 = 0.7429 (D3 selects its own best cell on the outcome metric -- it is the rival, and handicapping ourselves against it is the point)
+    forget_eval_test.go:286: --- CONTROL FALSIFIER, n=398 non-abstention queries (4.3) ---
+    forget_eval_test.go:287:     RAW  recall@5 = 0.8442   MRR = 0.5803
+    forget_eval_test.go:288:     D2*  recall@5 = 0.8141   MRR = 0.5627   delta = -3.0151 pp (F3 falsifies at worse than -2 pp)
+    forget_eval_test.go:307: INGEST+RETRIEVE: 9 instances, 204 turns, 0 newly embedded (rest cached), 34ms
+    forget_eval_test.go:313: --- ABSTENTION ROW [EXPLORATORY, no confirm/falsify weight], n=9 (4.3) ---
+    forget_eval_test.go:314:     RAW recall@5 = 0.6667 MRR = 0.4712  |  D2* recall@5 = 0.5556 MRR = 0.3631. For these queries the correct behaviour is to ABSTAIN, so a recall drop here is not straightforwardly a cost.
+    forget_eval_test.go:321: G1: Qdrant reports 148 points with consolidation_status=archived; the detector claimed 148
+    forget_eval_test.go:321: PF4 PASS: real Search + MustNot returned exactly the offline R_X on 20 sampled queries. This is what licenses every arm above being computed offline.
+    forget_eval_test.go:324: === H1, THE PRIMARY CELL (1.1, 1.2) ===
+    forget_eval_test.go:324:     SR@1(RAW) = 0.4714   SR@1(D2*) = 0.4493   delta = -2.22 pp
+    forget_eval_test.go:324:     exact two-sided McNemar: b=2 c=3 (raw discordant counts), 1 queries skipped as undefined, p = 1.000000. ONE confirmatory test; no correction because there is one test (4.14).
+    forget_eval_test.go:324:     equivalence half-width = 0.0635 over 69 paired queries (registered bound +/- 0.10, which needs b+c <= 12 at n=70)
+    forget_eval_test.go:1033: H1 FALSIFIED at F1 (effect): SR@1(D2*) - SR@1(RAW) = -2.22 pp, below the registered +10 pp  (A falsified H1 is a RESULT, not a failure -- 5.1.)
+    forget_eval_test.go:1033: H1 FALSIFIED at F2 (significance): McNemar p = 1.0000 >= 0.05. Report the +/-6.4 pp equivalence interval, never a bare p > 0.05.  (A falsified H1 is a RESULT, not a failure -- 5.1.)
+    forget_eval_test.go:1033: H1 FALSIFIED at F3 (cost): control recall@5 dropped 3.02 pp on the 398, more than the registered 2 pp. This is 'forgetting buys freshness with recall', which is NOT the thesis's claim.  (A falsified H1 is a RESULT, not a failure -- 5.1.)
+    forget_eval_test.go:1033: H1 FALSIFIED at F4 (mechanism): SR@1(D2*) = 0.4493 <= max over 20 RANDOM-ARCHIVE replicates = 0.5143 (mean 0.4637). A positive result cannot be distinguished from 'archiving anything helps'.  (A falsified H1 is a RESULT, not a failure -- 5.1.)
+    forget_eval_test.go:1033: H1 FALSIFIED at F5 (rival): SR@1(D2*) = 0.4493 <= max(D3 best 0.7429 at w=0.30 tau=30d, RAW+10pp 0.5714) = 0.7429  (A falsified H1 is a RESULT, not a failure -- 5.1.)
+    forget_eval_test.go:324:     SR@1 must never be quoted without control recall@5 beside it: it is structurally blind to collateral damage in the primary row (3.1, 6.8). RAW 0.8442 -> D2* 0.8141.
+    forget_eval_test.go:329: EXPLORATORY comparisons computed this run: 12 (every non-confirmatory SR@1 or recall row reported above). All are DESCRIPTIVE; no exploratory number may appear in a claim, and the count is printed so a reader can apply their own multiplicity correction. The single confirmatory test is D2* vs RAW on SR@1 over KU-permissive (1.2, 4.14).
+    forget_eval_test.go:333: HONEST RESULT LABEL: SR@1 over Qdrant top-200 cosine retrieval, all-MiniLM-L6-v2 384-dim at 256 wordpieces, with an offline archive filter. Measures whether forgetting puts the RIGHT EVIDENCE in front of a reader -- NOT answer quality (there is no judge), NOT the knapsack assembly or production read path, NOT the production write path, and NOT the repo's designed fact-level supersession mechanism in conflict.go, which has never executed.
+    forget_eval_test.go:194: CLEANUP: dropped Qdrant collection "cma_eval_forget"
+--- FAIL: TestForgettingExperiment (199.76s)
+FAIL
+FAIL	github.com/memora/cma/eval	199.781s
+FAIL
+EXIT=1

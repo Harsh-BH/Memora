@@ -818,3 +818,60 @@ with `failed to receive server preface within timeout`. Recovery was the documen
 collection. `dropCollection` is now wired into **every** test in `cma/eval` that creates a
 collection, not only the new harness. The container-side root cause (soft `RLIMIT_NOFILE` 1024)
 is unchanged and still the real fix.
+
+### A6 — 2026-09-01 — the experiment RAN. Two aborted runs, their reason, and the V9 gap they exposed
+
+§5.2 requires that every void and every re-run be reported with its reason. Three runs were
+started; the first two never produced an arm number.
+
+**Runs 1 and 2 — ABORTED at ingest, no arm number computed, not a void of H1.** Both died in
+`Upsert` partway through the 398-instance control ingest (run 1 at instance `4fd1909e`, run 2 at
+`ccb36322`, both around 4.5–5.6 k of 10,444 points) with
+`RocksDB put_cf error: IO error: While open a file for appending: …/payload_index/000138.sst: Too
+many open files`. This is exactly the `RLIMIT_NOFILE` jam §4.12 and A5 name as the unfixed
+container-side root cause. Raw logs: `cma/eval/out/forget_experiment_run1_aborted.log`,
+`…_run2_aborted.log`.
+
+**The fix, and why run 1's attempt at it failed.** `prlimit --pid 1` inside the container raised
+the wrong process: **PID 1 is the entrypoint, and `./qdrant` is PID 7** (**MEASURED-HERE**,
+`/proc/*/limits` inside `cma_qdrant`: PID 1 soft 1024, PID 7 soft 1024, hard 524288 on both). Run 2
+therefore hit the identical wall. Raising PID 7's soft limit to 65536 in place — `docker exec -u
+root cma_qdrant prlimit --pid 7 --nofile=65536:524288` — fixed it with **no container restart and
+no recreate**: the `cma_qdrant_data` volume and the production `cma_episodes` collection (8 points,
+status green, re-verified after) were untouched, as §4.12 requires. **MEASURED-HERE:** the qdrant
+process's open-fd count reached **1272** during the successful run, i.e. above the old 1024 soft
+limit, so that limit was the exact binding constraint and nothing else changed.
+
+This touches no threshold, rate, corpus or query definition. §1–§5 are unchanged.
+
+**Run 3 completed.** Raw log: `cma/eval/out/forget_experiment.log`. **H1 is FALSIFIED on all five
+clauses F1–F5.** No void condition fired: ORACLE = 1.0000, ANTI-ORACLE = 0.0000 over 70 defined
+queries, FLOOR = 1.0000, RAW evidence-found = 1.0000, RAW SR@1 = 0.4714 inside V4's [0.35, 0.65],
+PF0–PF4 all pass, G1 = 148 archived confirmed by raw Qdrant HTTP count.
+
+**A registered check the harness printed but never computed: V9.** §3.2 requires the attribution
+2×2's right-hand column to match RAW *unless* the detector archived one of that query's **current**
+gold turns; `checkVoids` implements V1–V4 and V7 but never tests that exception, so the run's V9
+status was unresolved. `cma/eval/cmd/postcheck/main.go` (written after the run; it is lexical-only,
+touches no vectors and no control set, and therefore cannot move θ\*, which §4.6 fixes from the
+control-set archive rate alone) closes it. **MEASURED-HERE:** at θ\* = 0.25 the D2 archive set
+contains a current gold on **7** instances, **6** of them where that query's own stale gold was not
+archived. The 2×2 (left column 9 hits / 1 undefined, right column 22 hits / 38 not) needs at least
+2 such queries to reconcile with RAW's 33 hits, because archiving a stale gold can never lower
+SR@1. 6 ≥ 2, so **V9 is SATISFIED**. Output: `cma/eval/out/postcheck.json`.
+
+**§4.6's "all cells reported", completed for D2's mechanism diagnostics** (the harness reported the
+archive-rate curve for every cell, which is what selects θ\*, but pair-catch only for the selected
+cell). **MEASURED-HERE**, over the 70 KU-permissive instances / 1640 turns:
+
+| θ | archived | KU archive rate | stale golds archived | **current golds archived** | pair-catch |
+|---|---|---|---|---|---|
+| 0.10 | 809 | 0.4933 | 53 | **37** | 32/70 = 0.457 |
+| 0.15 | 503 | 0.3067 | 35 | **23** | 17/70 = 0.243 |
+| 0.20 | 273 | 0.1665 | 22 | **7** | 9/70 = 0.129 |
+| **0.25 (θ\*)** | **148** | **0.0902** | **10** | **7** | **5/70 = 0.071** |
+
+The registered ORACLE rate is ρ\* = 0.0439 (72/1640). Every cell of the registered grid fires above
+it, θ\* by 2.1×. There is no cell at which the detector catches supersession pairs without
+archiving the current gold at a comparable rate: the stale:current ratio is 1.43, 1.52, 3.14, 1.43.
+This is the mechanism-level statement of the null and it is reported as the finding.
