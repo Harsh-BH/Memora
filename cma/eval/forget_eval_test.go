@@ -1010,14 +1010,19 @@ func (h *harness) reportH1(t *testing.T, raw, prim *armResult, rawRecall, d2Reca
 	b, c, skipped := Discordant(prim.outcomes, raw.outcomes)
 	p := McNemarExact(b, c)
 	delta := prim.mean - raw.mean
-	half := WilsonHalfWidth(b, c, prim.defined)
+	// n is the PAIRED count -- queries where both arms are defined -- not one
+	// arm's defined count. McNemar is a paired test and the equivalence bound
+	// must use the same denominator the discordant pairs came from.
+	paired := len(prim.outcomes) - skipped
+	half := WilsonHalfWidth(b, c, paired)
 
 	t.Logf("=== H1, THE PRIMARY CELL (1.1, 1.2) ===")
 	t.Logf("    SR@1(RAW) = %.4f   SR@1(D2*) = %.4f   delta = %+.2f pp", raw.mean, prim.mean, 100*delta)
 	t.Logf("    exact two-sided McNemar: b=%d c=%d (raw discordant counts), %d queries skipped as "+
 		"undefined, p = %.6f. ONE confirmatory test; no correction because there is one test (4.14).",
 		b, c, skipped, p)
-	t.Logf("    equivalence half-width = %.4f (registered bound +/- 0.10; needs b+c <= 12 at n=70)", half)
+	t.Logf("    equivalence half-width = %.4f over %d paired queries (registered bound +/- 0.10, "+
+		"which needs b+c <= 12 at n=70)", half, paired)
 
 	if !h.full {
 		t.Logf("    SMOKE RUN: the clauses below are NOT evaluated and these numbers are not results.")
