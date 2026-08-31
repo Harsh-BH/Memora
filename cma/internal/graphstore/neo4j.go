@@ -194,6 +194,29 @@ func (n *Neo4jStore) TraverseHops(ctx context.Context, userID string, seedEntiti
 			conf = c
 		}
 
+		// BUG 1 of 3, found 2026-08-31 by cma/eval/hybrid_eval_test.go: this
+		// result cannot name the document it came from.
+		//
+		// The Cypher above already RETURNs rel.source_ep_id (:170), and it is
+		// never read out of the record -- note the absence of a
+		// record.Get("source_ep_id") beside the four Gets above. The Episode
+		// below is then built with Content but NO ID, so nothing downstream
+		// can tell which episode this fact was extracted from.
+		//
+		// Consequences, both measured: the empty Episode.ID collapses every
+		// graph result onto one dedup key (see BUG 2, retrieval/service.go's
+		// contentKey), and the zero-value Episode also carries DecayFactor 0,
+		// which dig.heuristicScore multiplies through at dig.go:104 -- zeroing
+		// the cosine, recency and importance terms and leaving a flat 0.15
+		// from the graph-confidence term alone. Observed exactly: graph
+		// results scored 0.1500 against a worst-case vector score of 0.3381,
+		// so they sort below every document.
+		//
+		// FIX: read source_ep_id and set it as Episode.ID (about 3 lines), and
+		// set DecayFactor: 1.0 so heuristicScore does not zero the result.
+		// Small, but it only becomes useful once BUG 2 and BUG 3 are also
+		// addressed -- all three must be fixed for the graph arm to affect a
+		// ranking at all. Not fixed here; scope of that round was measurement.
 		results = append(results, models.RetrievalResult{
 			GraphFacts: []models.Triple{
 				{
