@@ -148,6 +148,11 @@ func (s *Service) mergeResults(vectorResults, graphResults []models.RetrievalRes
 	return merged
 }
 
+// ExtractEntities exposes the production entity heuristic below, unchanged, so
+// an eval harness can populate a graph using the exact same rule the query path
+// uses to pick its traversal seeds. Wrapper only -- no behavior of its own.
+func (s *Service) ExtractEntities(text string) []string { return s.extractEntities(text) }
+
 // extractEntities performs simple entity extraction from the query.
 // In production, this would use NER or the LLM for extraction.
 func (s *Service) extractEntities(query string) []string {
