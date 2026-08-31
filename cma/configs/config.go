@@ -36,6 +36,17 @@ type QdrantConfig struct {
 	VectorSize uint64 `yaml:"vector_size"`
 	HnswM      uint64 `yaml:"hnsw_m"`
 	HnswEF     uint64 `yaml:"hnsw_ef"`
+
+	// WaitForIndex makes Upsert block until the write is applied AND indexed,
+	// so a point is guaranteed visible to an immediately-following
+	// Search/Scroll. Defaults to false: MEASURED 2026-09-01 on the
+	// TestRetrievalEvalRecallAndMRR ingest (20 documents, 3 runs, median), it
+	// costs 268ms -> 759ms, a 2.83x regression, which is over the 2x rollback
+	// threshold pre-registered in cma/eval/PREREGISTRATION.md 4.15 -- hence an
+	// opt-in rather than the unconditional flag that section originally
+	// registered. Offline harnesses that archive-then-verify should set it;
+	// the live ingest path should not.
+	WaitForIndex bool `yaml:"wait_for_index"`
 }
 
 type Neo4jConfig struct {
