@@ -10,8 +10,10 @@ import (
 	"time"
 
 	"github.com/memora/cma/configs"
+	"github.com/memora/cma/internal/dig"
 	"github.com/memora/cma/internal/ingest"
 	"github.com/memora/cma/internal/llm"
+	"github.com/memora/cma/internal/models"
 	"github.com/memora/cma/internal/segmentation"
 	"github.com/memora/cma/internal/vectorstore"
 )
@@ -26,19 +28,39 @@ const hardEvalUserID = "hard-eval-user"
 // them; nothing here was adjusted after seeing a result. If the numbers
 // are bad, they are reported bad.
 //
-// Reports the full recall@1/3/5/10 + MRR curve for TWO retrieval methods
+// Reports the full recall@1/3/5/10 + MRR curve for THREE retrieval methods
 // head to head, over the identical corpus and queries:
-//   - the embedding path: Qdrant top-k cosine search over local
-//     all-MiniLM-L6-v2 384-dim embeddings (via the real, fixed
-//     StructuralSegmenter + ingest.Service pipeline)
-//   - a from-scratch Okapi BM25 lexical baseline (bm25.go), no embedding,
+//   - BM25: a from-scratch Okapi lexical baseline (bm25.go), no embedding,
 //     no vector store, no network
+//   - cosine: Qdrant top-k cosine search over local all-MiniLM-L6-v2
+//     384-dim embeddings (via the real, fixed StructuralSegmenter +
+//     ingest.Service pipeline)
+//   - cosine+DIG: the same cosine candidates (pool of digPoolSize, wider
+//     than the top-10 cutoff so reranking has room to actually reorder),
+//     reranked by dig.Reranker.Rerank -- which is the HEURISTIC scorer
+//     (cosine + recency + importance + decay-factor + graph-confidence),
+//     since the true logprob-based DIG is permanently unreachable (see
+//     dig.go's doc comment, round 3). Label this arm "cosine+heuristic
+//     DIG", never "the logprob DIG the paper describes."
 //
-// Scope, same constraint as round 3: vector-only. Neo4j is not stood up.
-// Report/word ANY number from this test as "recall@k / MRR over Qdrant
-// top-k cosine search" for the embedding path -- never "Memora's retrieval
-// quality," never implying the graph arm, DIG reranking, or knapsack
-// assembly were measured. Neither path in this test touches that code.
+// Predicted BEFORE running (see round-5 report): in this eval, cosine+DIG
+// should be statistically indistinguishable from plain cosine. Every term
+// heuristicScore adds beyond the cosine baseline is either constant or
+// zero here: all 100 episodes are ingested within the same few seconds so
+// the recency term is ~identical across candidates; ImportanceScore is 0
+// for every episode (surprisal is gone, see structural.go); DecayFactor is
+// 1.0 for every episode (nothing has been consolidated); and GraphFacts is
+// always empty (no Neo4j). Adding the same near-constant to every
+// candidate's score cannot change their relative order. This is a
+// prediction from reading the code, stated before the run below, not a
+// post-hoc excuse for a null result.
+//
+// Scope, same constraint as rounds 3-4: vector-only. Neo4j is not stood
+// up. Report/word ANY number from this test as "recall@k / MRR over
+// Qdrant top-k cosine search" (plus, for the third arm, "with heuristic
+// DIG reranking") -- never "Memora's retrieval quality," never implying
+// the graph arm or knapsack assembly were measured. Neither path in this
+// test touches that code.
 func TestHardRetrievalEvalVsBM25(t *testing.T) {
 	root := filepath.Join("..", "third_party")
 	lib := filepath.Join(root, "onnxruntime", "lib", "libonnxruntime.so")
@@ -103,9 +125,14 @@ func TestHardRetrievalEvalVsBM25(t *testing.T) {
 	}
 
 	bm25 := NewBM25(hardCorpus)
+	// nil llm.Provider: Rerank never calls it (round-3 finding, dig_test.go
+	// TestRerankNeverCallsLLM) -- the logprob path is permanently
+	// unreachable, so heuristicScore always runs instead.
+	reranker := dig.NewReranker(nil, configs.DIGConfig{MinScore: -0.5})
 
 	ks := []int{1, 3, 5, 10}
 	maxK := ks[len(ks)-1]
+	const digPoolSize = 30 // wider than maxK so reranking has room to reorder
 
 	type curve struct {
 		hitsAtK map[int]int
@@ -114,25 +141,43 @@ func TestHardRetrievalEvalVsBM25(t *testing.T) {
 	}
 	vecCurve := curve{hitsAtK: map[int]int{}}
 	bmCurve := curve{hitsAtK: map[int]int{}}
+	digCurve := curve{hitsAtK: map[int]int{}}
 	var vecNoAnswerScores, bmNoAnswerScores []float64
 	var misses []string
+	identicalOrder := 0 // queries where cosine+DIG returned the same top-maxK IDs in the same order as raw cosine
 
 	for qi, q := range hardQueries {
-		// --- embedding path ---
+		// --- embedding path: fetch a wider pool once, reuse for both
+		// raw-cosine (its own top maxK) and cosine+DIG (reranks the pool) ---
 		qVec, err := embedder.Embed(ctx, q.text)
 		if err != nil {
 			t.Fatalf("embed query %d: %v", qi, err)
 		}
-		vecResults, err := vectorDB.Search(ctx, hardEvalUserID, qVec, maxK)
+		pool, err := vectorDB.Search(ctx, hardEvalUserID, qVec, digPoolSize)
 		if err != nil {
 			t.Fatalf("vector search query %d: %v", qi, err)
 		}
-		vecRank := 0
-		for pos, r := range vecResults {
-			if r.Episode != nil && q.expected >= 0 && r.Episode.ID == docEpisodeID[q.expected] {
-				vecRank = pos + 1
-				break
-			}
+		vecResults := pool
+		if len(vecResults) > maxK {
+			vecResults = vecResults[:maxK]
+		}
+		vecRank := rankOf(vecResults, q.expected, docEpisodeID)
+
+		digCandidates, err := reranker.Rerank(ctx, q.text, pool)
+		if err != nil {
+			t.Fatalf("dig rerank query %d: %v", qi, err)
+		}
+		digResults := make([]models.RetrievalResult, 0, len(digCandidates))
+		for _, c := range digCandidates {
+			digResults = append(digResults, c.Result)
+		}
+		if len(digResults) > maxK {
+			digResults = digResults[:maxK]
+		}
+		digRank := rankOf(digResults, q.expected, docEpisodeID)
+
+		if sameOrder(vecResults, digResults) {
+			identicalOrder++
 		}
 
 		// --- BM25 path ---
@@ -164,12 +209,16 @@ func TestHardRetrievalEvalVsBM25(t *testing.T) {
 
 		vecCurve.n++
 		bmCurve.n++
+		digCurve.n++
 		for _, k := range ks {
 			if vecRank != 0 && vecRank <= k {
 				vecCurve.hitsAtK[k]++
 			}
 			if bmRank != 0 && bmRank <= k {
 				bmCurve.hitsAtK[k]++
+			}
+			if digRank != 0 && digRank <= k {
+				digCurve.hitsAtK[k]++
 			}
 		}
 		if vecRank != 0 {
@@ -178,9 +227,12 @@ func TestHardRetrievalEvalVsBM25(t *testing.T) {
 		if bmRank != 0 {
 			bmCurve.rrSum += 1.0 / float64(bmRank)
 		}
+		if digRank != 0 {
+			digCurve.rrSum += 1.0 / float64(digRank)
+		}
 		if vecRank == 0 || vecRank > 3 {
-			misses = append(misses, fmt.Sprintf("  vec rank=%d bm25 rank=%d: %q (expected doc %d, cluster %d)",
-				vecRank, bmRank, q.text, q.expected, hardClusterOf(q.expected)))
+			misses = append(misses, fmt.Sprintf("  vec rank=%d dig rank=%d bm25 rank=%d: %q (expected doc %d, cluster %d)",
+				vecRank, digRank, bmRank, q.text, q.expected, hardClusterOf(q.expected)))
 		}
 	}
 
@@ -194,8 +246,13 @@ func TestHardRetrievalEvalVsBM25(t *testing.T) {
 	}
 	t.Logf("=== CORPUS: %d documents in %d clusters of 5, %d answerable queries, %d unanswerable ===",
 		len(hardCorpus), len(hardCorpus)/5, vecCurve.n, len(vecNoAnswerScores))
-	report("EMBEDDING (Qdrant top-k cosine, all-MiniLM-L6-v2 384-dim)", vecCurve)
 	report("BM25 (Okapi, k1=1.5 b=0.75, lexical only)", bmCurve)
+	report("COSINE (Qdrant top-k, all-MiniLM-L6-v2 384-dim)", vecCurve)
+	report("COSINE+HEURISTIC DIG (cosine + recency + importance + decay + graph-confidence rerank)", digCurve)
+	t.Logf("DIG PREDICTION CHECK: cosine+DIG returned the identical top-%d ID order as raw cosine on %d/%d "+
+		"queries, answerable and unanswerable together (predicted: all of them, since every non-cosine "+
+		"DIG term is constant or zero in this eval -- see this test's doc comment)",
+		maxK, identicalOrder, len(hardQueries))
 
 	avg := func(xs []float64) float64 {
 		if len(xs) == 0 {
@@ -220,10 +277,48 @@ func TestHardRetrievalEvalVsBM25(t *testing.T) {
 		}
 	}
 
-	t.Logf("HONEST RESULT LABEL: recall@k / MRR over Qdrant top-k cosine search vs. an Okapi BM25 "+
-		"baseline, all-MiniLM-L6-v2 384-dim local embeddings, %d clustered documents / %d answerable "+
-		"queries. Does NOT measure the Neo4j graph arm, DIG reranking, or knapsack assembly.",
+	t.Logf("HONEST RESULT LABEL: recall@k / MRR over Qdrant top-k cosine search, an Okapi BM25 "+
+		"baseline, and cosine reranked by DIG's HEURISTIC scorer (not the logprob DIG the paper "+
+		"describes -- that path is permanently unreachable), all-MiniLM-L6-v2 384-dim local "+
+		"embeddings, %d clustered documents / %d answerable queries. Does NOT measure the Neo4j "+
+		"graph arm or knapsack assembly.",
 		len(hardCorpus), vecCurve.n)
+}
+
+// rankOf returns the 1-based position of the expected document's episode in
+// results, or 0 if it is not present (or expected < 0, i.e. unanswerable).
+func rankOf(results []models.RetrievalResult, expected int, docEpisodeID []string) int {
+	if expected < 0 {
+		return 0
+	}
+	for pos, r := range results {
+		if r.Episode != nil && r.Episode.ID == docEpisodeID[expected] {
+			return pos + 1
+		}
+	}
+	return 0
+}
+
+// sameOrder reports whether two result lists name the same episode IDs in
+// the same order -- used to check the round-5 prediction that cosine+DIG
+// cannot reorder cosine's ranking in this eval.
+func sameOrder(a, b []models.RetrievalResult) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		idA, idB := "", ""
+		if a[i].Episode != nil {
+			idA = a[i].Episode.ID
+		}
+		if b[i].Episode != nil {
+			idB = b[i].Episode.ID
+		}
+		if idA != idB {
+			return false
+		}
+	}
+	return true
 }
 
 func maxOf(xs []float64) float64 {
