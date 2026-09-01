@@ -63,12 +63,18 @@ type RedisConfig struct {
 }
 
 type LLMConfig struct {
+	// Provider selects the backend: "openai" (default) or "claude-cli"
+	// (shells out to the logged-in `claude -p`; no API key needed).
 	Provider       string  `yaml:"provider"`
 	APIKey         string  `yaml:"api_key"`
 	Model          string  `yaml:"model"`
 	EmbeddingModel string  `yaml:"embedding_model"`
 	MaxTokens      int     `yaml:"max_tokens"`
 	Temperature    float64 `yaml:"temperature"`
+	// TimeoutSeconds and MaxConcurrency apply to the claude-cli provider,
+	// which forks a process per call. Defaults: 120s, 2.
+	TimeoutSeconds int `yaml:"timeout_seconds"`
+	MaxConcurrency int `yaml:"max_concurrency"`
 }
 
 type SegmentationConfig struct {
