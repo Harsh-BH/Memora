@@ -98,6 +98,7 @@ func TestRetrievalEvalRecallAndMRR(t *testing.T) {
 	if err := vectorDB.EnsureCollection(ctx); err != nil {
 		t.Fatalf("EnsureCollection: %v", err)
 	}
+	t.Cleanup(func() { dropCollection(t, collectionName) })
 
 	segCfg := configs.SegmentationConfig{MinEpisodeTokens: 50, MaxEpisodeTokens: 500}
 	segmenter := segmentation.NewStructuralSegmenter(embedder, segCfg)
@@ -107,6 +108,11 @@ func TestRetrievalEvalRecallAndMRR(t *testing.T) {
 	// --- Ingest the corpus through the real, fixed pipeline ---
 	docEpisodeIDs := make([][]string, len(corpus))
 	totalEpisodes := 0
+	// Ingest wall clock is logged because PREREGISTRATION.md 4.15 makes it the
+	// rollback trigger for Upsert's Wait:true flag (>2x regression => Wait
+	// becomes a constructor option). Keeping the number in the test output means
+	// that rule stays checkable instead of living in one commit message.
+	ingestStart := time.Now()
 	for i, doc := range corpus {
 		resp, err := ingestSvc.Ingest(ctx, evalUserID, doc, "user")
 		if err != nil {
@@ -118,8 +124,9 @@ func TestRetrievalEvalRecallAndMRR(t *testing.T) {
 		docEpisodeIDs[i] = resp.EpisodeIDs
 		totalEpisodes += resp.Segments
 	}
-	t.Logf("INGEST: %d source documents -> %d episodes in Qdrant collection %q",
-		len(corpus), totalEpisodes, collectionName)
+	ingestWall := time.Since(ingestStart)
+	t.Logf("INGEST: %d source documents -> %d episodes in Qdrant collection %q, wall clock %s",
+		len(corpus), totalEpisodes, collectionName, ingestWall.Round(time.Millisecond))
 
 	// Upsert's gRPC call does not set wait:true (internal/vectorstore/qdrant.go),
 	// so a freshly-upserted point is not guaranteed immediately visible to a

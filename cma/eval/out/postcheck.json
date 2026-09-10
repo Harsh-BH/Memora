@@ -1,0 +1,54 @@
+{
+  "corpus_sha256": "821a2034d219ab45846873dd14c14f12cfe7776e73527a483f9dac095d38620c",
+  "ku_instances": 70,
+  "ku_turns": 1640,
+  "d2_grid_on_ku": [
+    {
+      "theta": 0.1,
+      "archived": 809,
+      "ku_archive_rate": 0.49329268292682926,
+      "stale_golds_archived": 53,
+      "current_golds_archived": 37,
+      "pair_catch_instances": 32,
+      "pair_catch_rate": 0.45714285714285713,
+      "instances_with_any_archive": 70
+    },
+    {
+      "theta": 0.15,
+      "archived": 503,
+      "ku_archive_rate": 0.3067073170731707,
+      "stale_golds_archived": 35,
+      "current_golds_archived": 23,
+      "pair_catch_instances": 17,
+      "pair_catch_rate": 0.24285714285714285,
+      "instances_with_any_archive": 70
+    },
+    {
+      "theta": 0.2,
+      "archived": 273,
+      "ku_archive_rate": 0.16646341463414635,
+      "stale_golds_archived": 22,
+      "current_golds_archived": 7,
+      "pair_catch_instances": 9,
+      "pair_catch_rate": 0.12857142857142856,
+      "instances_with_any_archive": 68
+    },
+    {
+      "theta": 0.25,
+      "archived": 148,
+      "ku_archive_rate": 0.09024390243902439,
+      "stale_golds_archived": 10,
+      "current_golds_archived": 7,
+      "pair_catch_instances": 5,
+      "pair_catch_rate": 0.07142857142857142,
+      "instances_with_any_archive": 56
+    }
+  ],
+  "v9_theta_star": 0.25,
+  "v9_current_golds_archived_total": 7,
+  "v9_current_gold_archived_where_own_stale_NOT_archived": 6,
+  "v9_current_gold_archived_where_own_stale_ALSO_archived": 1,
+  "v9_right_column_flips_needing_explanation": 2,
+  "v9_verdict": "V9 SATISFIED: 6 right-column queries had a current gold archived, which is \u003e= the 2 flips the attribution 2x2 requires an explanation for",
+  "probe_lexical_top1_for_contrast": "23/70 = 0.3286 (cma/eval/out/probe.json, measured)"
+}

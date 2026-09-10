@@ -1,0 +1,28 @@
+top-up: 19 of 70 instances (6aeb4375,89941a93,a1eacc2a,f9e8c073,c4ea545c,db467c8c,7a87bd0c,1cea1afa,ed4ddc30,8fb83627,b01defab,0e4e4c46,4b24c848,7e974930,603deb26,59524333,5831f84d,affe2881,69fee5aa)
+resumed: 446 turns over 19 instances, 316 still pending (nothing re-ingested)
+[19/19] 69fee5aa rounds=1 pending_after=0 
+[1/19] 6aeb4375 rounds=1 pending_after=0 
+[4/19] f9e8c073 rounds=1 pending_after=0 
+[5/19] c4ea545c rounds=1 pending_after=0 
+[15/19] 603deb26 rounds=1 pending_after=0 
+[3/19] a1eacc2a rounds=1 pending_after=0 
+[2/19] 89941a93 rounds=1 pending_after=0 
+[11/19] b01defab rounds=1 pending_after=0 
+[17/19] 5831f84d rounds=1 pending_after=0 
+[13/19] 4b24c848 rounds=1 pending_after=0 
+[8/19] 1cea1afa rounds=1 pending_after=0 
+[6/19] db467c8c rounds=1 pending_after=0 
+[7/19] 7a87bd0c rounds=1 pending_after=0 
+[14/19] 7e974930 rounds=1 pending_after=0 
+[12/19] 0e4e4c46 rounds=1 pending_after=0 
+[16/19] 59524333 rounds=1 pending_after=0 
+[10/19] 8fb83627 rounds=1 pending_after=0 
+[18/19] affe2881 rounds=1 pending_after=0 
+[9/19] ed4ddc30 rounds=1 pending_after=0 
+
+=== FROZEN ===
+artifact eval/out/consolidation_triples.json
+sha256   e8d0841cf54f0d8e4ffa36ede8de76b0092eb407f1127e5e1bb0bb2551ab41b6
+passes   2
+clusters 828  triples 7054  cli_calls 1872  cli_failures 220
+llm wall 17m8s  total wall 17m12s

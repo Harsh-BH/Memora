@@ -97,6 +97,7 @@ func TestHardRetrievalEvalVsBM25(t *testing.T) {
 	if err := vectorDB.EnsureCollection(ctx); err != nil {
 		t.Fatalf("EnsureCollection: %v", err)
 	}
+	t.Cleanup(func() { dropCollection(t, collectionName) })
 
 	segCfg := configs.SegmentationConfig{MinEpisodeTokens: 50, MaxEpisodeTokens: 500}
 	segmenter := segmentation.NewStructuralSegmenter(embedder, segCfg)

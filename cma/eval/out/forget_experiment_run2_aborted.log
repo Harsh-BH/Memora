@@ -1,0 +1,12 @@
+=== RUN   TestForgettingExperiment
+    forget_eval_test.go:93: CLEANUP: dropped Qdrant collection "cma_eval_forget"
+2026/09/01 02:08:27 INFO qdrant collection created collection=cma_eval_forget
+    forget_eval_test.go:208: === FORGETTING EXPERIMENT (FULL RUN) === collection "cma_eval_forget" dim 384, depth D=200, cutoff K=50
+    forget_eval_test.go:212: INGEST+RETRIEVE: 70 instances, 1640 turns, 0 newly embedded (rest cached), 758ms
+    forget_eval_test.go:213: ccb36322: Upsert: qdrant upsert: rpc error: code = Internal desc = Service internal error: RocksDB put_cf error: IO error: While open a file for appending: ./storage/collections/cma_eval_forget/0/segments/255d91d4-b6ed-4480-b905-8b6e35d5c022/payload_index/000138.sst: Too many open files
+    forget_eval_test.go:194: CLEANUP: collection "cma_eval_forget" NOT dropped: Delete "http://localhost:6333/collections/cma_eval_forget": context deadline exceeded (Client.Timeout exceeded while awaiting headers) -- drop it by hand (curl -X DELETE localhost:6333/collections/cma_eval_forget) or Qdrant will hit its nofile limit
+--- FAIL: TestForgettingExperiment (147.07s)
+FAIL
+FAIL	github.com/memora/cma/eval	147.080s
+FAIL
+EXIT=1

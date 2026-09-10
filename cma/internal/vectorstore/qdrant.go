@@ -148,21 +148,27 @@ func (q *QdrantStore) Upsert(ctx context.Context, episodes []models.Episode) err
 		})
 	}
 
-	// BUG, found 2026-08-31 while building cma/eval: Wait is unset (nil), so
-	// this call does not block until the write is applied and indexed.
-	// Measured directly: GetRecent/Search immediately after this call on a
-	// brand-new collection can return 0 rows for points that ARE correctly
-	// stored moments later. Any caller that upserts then immediately reads
-	// back (ingest -> query in the same request, a test, a script) can
-	// observe a false "not found." Set Wait: ptr(true) (see ptr() below) to
-	// fix, at the cost of Upsert blocking until indexing completes -- evaluate that
-	// latency cost before flipping it on the hot ingest path. Worked around
-	// in cma/eval with a poll loop (retrieval_eval_test.go's waitForCount)
-	// rather than fixed here, since this call is also used by the live
-	// ingest path and changing its latency behavior deserves its own look.
+	// Wait, when q.cfg.WaitForIndex is set, blocks this call until the write is
+	// applied AND indexed. Without it -- the default -- a freshly-upserted point
+	// is not guaranteed visible to an immediate Search/Scroll, so any caller
+	// that upserts then reads back (ingest -> query in one request, a test, a
+	// script) can observe a false "not found". cma/eval's waitForCount poll loop
+	// is the workaround on that path.
+	//
+	// Why this is opt-in and not unconditional: cma/eval/PREREGISTRATION.md 4.15
+	// registered flipping it on for everyone, with a rollback rule at a >2x
+	// regression on the existing TestRetrievalEvalRecallAndMRR ingest wall clock.
+	// MEASURED 2026-09-01, 20 documents, 3 runs each, median:
+	//   Wait unset: 378 / 236 / 268 ms  -> 268 ms
+	//   Wait set:   813 / 722 / 759 ms  -> 759 ms   = 2.83x
+	// Over the threshold, so the registered rollback applies and this became a
+	// config option. The eval harness sets WaitForIndex: true, because an
+	// archive-then-verify without it measures Qdrant indexing lag rather than
+	// forgetting; the live ingest path leaves it off and keeps its latency.
 	_, err := q.points.Upsert(ctx, &pb.UpsertPoints{
 		CollectionName: q.cfg.Collection,
 		Points:         points,
+		Wait:           ptr(q.cfg.WaitForIndex),
 	})
 	if err != nil {
 		return fmt.Errorf("qdrant upsert: %w", err)
@@ -171,7 +177,13 @@ func (q *QdrantStore) Upsert(ctx context.Context, episodes []models.Episode) err
 	return nil
 }
 
-// Search performs cosine similarity search with user_id payload filter.
+// Search performs cosine similarity search with user_id payload filter,
+// excluding archived episodes.
+//
+// The MustNot clause is the forgetting mechanism's only read-side effect:
+// models.StatusArchived had zero references anywhere in the repo before this,
+// so nothing could be forgotten. consolidation_status is already a keyword
+// payload index (see EnsureCollection above), so this costs no index change.
 func (q *QdrantStore) Search(ctx context.Context, userID string, queryVector []float32, topK int) ([]models.RetrievalResult, error) {
 	resp, err := q.points.Search(ctx, &pb.SearchPoints{
 		CollectionName: q.cfg.Collection,
@@ -179,18 +191,8 @@ func (q *QdrantStore) Search(ctx context.Context, userID string, queryVector []f
 		Limit:          uint64(topK),
 		WithPayload:    &pb.WithPayloadSelector{SelectorOptions: &pb.WithPayloadSelector_Enable{Enable: true}},
 		Filter: &pb.Filter{
-			Must: []*pb.Condition{
-				{
-					ConditionOneOf: &pb.Condition_Field{
-						Field: &pb.FieldCondition{
-							Key: "user_id",
-							Match: &pb.Match{
-								MatchValue: &pb.Match_Keyword{Keyword: userID},
-							},
-						},
-					},
-				},
-			},
+			Must:    []*pb.Condition{matchKeyword("user_id", userID)},
+			MustNot: []*pb.Condition{matchKeyword("consolidation_status", string(models.StatusArchived))},
 		},
 	})
 	if err != nil {
@@ -216,22 +218,8 @@ func (q *QdrantStore) GetUnconsolidated(ctx context.Context, userID string, limi
 		CollectionName: q.cfg.Collection,
 		Filter: &pb.Filter{
 			Must: []*pb.Condition{
-				{
-					ConditionOneOf: &pb.Condition_Field{
-						Field: &pb.FieldCondition{
-							Key:   "user_id",
-							Match: &pb.Match{MatchValue: &pb.Match_Keyword{Keyword: userID}},
-						},
-					},
-				},
-				{
-					ConditionOneOf: &pb.Condition_Field{
-						Field: &pb.FieldCondition{
-							Key:   "consolidation_status",
-							Match: &pb.Match{MatchValue: &pb.Match_Keyword{Keyword: string(models.StatusPending)}},
-						},
-					},
-				},
+				matchKeyword("user_id", userID),
+				matchKeyword("consolidation_status", string(models.StatusPending)),
 			},
 		},
 		Limit:       ptr(uint32(limit)),
@@ -256,24 +244,40 @@ func (q *QdrantStore) GetUnconsolidated(ctx context.Context, userID string, limi
 
 // MarkConsolidated sets consolidation_status = "consolidated" for the given IDs.
 func (q *QdrantStore) MarkConsolidated(ctx context.Context, ids []string) error {
-	pointIDs := make([]*pb.PointId, 0, len(ids))
-	for _, id := range ids {
-		pointIDs = append(pointIDs, &pb.PointId{PointIdOptions: &pb.PointId_Uuid{Uuid: id}})
+	return q.setStatus(ctx, ids, models.StatusConsolidated)
+}
+
+// ArchiveByIDs sets consolidation_status = "archived" for the given IDs, which
+// removes them from Search's results (see Search's MustNot clause). This is the
+// write half of the forgetting mechanism.
+//
+// Deliberately on *QdrantStore and NOT on the VectorStore interface:
+// QdrantStore is the only implementation, there are no mocks, and the eval
+// harness already holds the concrete type. Pre-registered as such in
+// cma/eval/PREREGISTRATION.md §4.12.
+func (q *QdrantStore) ArchiveByIDs(ctx context.Context, ids []string) error {
+	return q.setStatus(ctx, ids, models.StatusArchived)
+}
+
+// setStatus is the shared SetPayload body behind MarkConsolidated and
+// ArchiveByIDs. Wait blocks until the change is applied and indexed, so an
+// immediately-following Search observes it -- without that, an
+// archive-then-search measures indexing lag rather than the filter.
+func (q *QdrantStore) setStatus(ctx context.Context, ids []string, status models.ConsolidationStatus) error {
+	if len(ids) == 0 {
+		return nil
 	}
 
 	_, err := q.points.SetPayload(ctx, &pb.SetPayloadPoints{
 		CollectionName: q.cfg.Collection,
-		PointsSelector: &pb.PointsSelector{
-			PointsSelectorOneOf: &pb.PointsSelector_Points{
-				Points: &pb.PointsIdsList{Ids: pointIDs},
-			},
-		},
+		PointsSelector: pointIDSelector(ids),
 		Payload: map[string]*pb.Value{
-			"consolidation_status": {Kind: &pb.Value_StringValue{StringValue: string(models.StatusConsolidated)}},
+			"consolidation_status": {Kind: &pb.Value_StringValue{StringValue: string(status)}},
 		},
+		Wait: ptr(true),
 	})
 	if err != nil {
-		return fmt.Errorf("qdrant mark consolidated: %w", err)
+		return fmt.Errorf("qdrant set consolidation_status=%s: %w", status, err)
 	}
 
 	return nil
@@ -281,18 +285,9 @@ func (q *QdrantStore) MarkConsolidated(ctx context.Context, ids []string) error 
 
 // UpdateDecay sets decay_factor for the given IDs.
 func (q *QdrantStore) UpdateDecay(ctx context.Context, ids []string, decayFactor float64) error {
-	pointIDs := make([]*pb.PointId, 0, len(ids))
-	for _, id := range ids {
-		pointIDs = append(pointIDs, &pb.PointId{PointIdOptions: &pb.PointId_Uuid{Uuid: id}})
-	}
-
 	_, err := q.points.SetPayload(ctx, &pb.SetPayloadPoints{
 		CollectionName: q.cfg.Collection,
-		PointsSelector: &pb.PointsSelector{
-			PointsSelectorOneOf: &pb.PointsSelector_Points{
-				Points: &pb.PointsIdsList{Ids: pointIDs},
-			},
-		},
+		PointsSelector: pointIDSelector(ids),
 		Payload: map[string]*pb.Value{
 			"decay_factor": {Kind: &pb.Value_DoubleValue{DoubleValue: decayFactor}},
 		},
@@ -306,18 +301,10 @@ func (q *QdrantStore) UpdateDecay(ctx context.Context, ids []string, decayFactor
 
 // DeleteByIDs removes points by UUID.
 func (q *QdrantStore) DeleteByIDs(ctx context.Context, ids []string) error {
-	pointIDs := make([]*pb.PointId, 0, len(ids))
-	for _, id := range ids {
-		pointIDs = append(pointIDs, &pb.PointId{PointIdOptions: &pb.PointId_Uuid{Uuid: id}})
-	}
-
 	_, err := q.points.Delete(ctx, &pb.DeletePoints{
 		CollectionName: q.cfg.Collection,
-		Points: &pb.PointsSelector{
-			PointsSelectorOneOf: &pb.PointsSelector_Points{
-				Points: &pb.PointsIdsList{Ids: pointIDs},
-			},
-		},
+		Points:         pointIDSelector(ids),
+		Wait:           ptr(true),
 	})
 	if err != nil {
 		return fmt.Errorf("qdrant delete: %w", err)
@@ -328,26 +315,21 @@ func (q *QdrantStore) DeleteByIDs(ctx context.Context, ids []string) error {
 
 // CountUnconsolidated returns the number of pending episodes for a user.
 func (q *QdrantStore) CountUnconsolidated(ctx context.Context, userID string) (int, error) {
+	return q.CountByStatus(ctx, userID, models.StatusPending)
+}
+
+// CountByStatus returns the exact number of episodes for a user in the given
+// consolidation status. CountUnconsolidated was the only count in the repo and
+// it hard-coded "pending"; the archive gate needs to count "archived".
+//
+// Not on the VectorStore interface, for the same reason as ArchiveByIDs.
+func (q *QdrantStore) CountByStatus(ctx context.Context, userID string, status models.ConsolidationStatus) (int, error) {
 	resp, err := q.points.Count(ctx, &pb.CountPoints{
 		CollectionName: q.cfg.Collection,
 		Filter: &pb.Filter{
 			Must: []*pb.Condition{
-				{
-					ConditionOneOf: &pb.Condition_Field{
-						Field: &pb.FieldCondition{
-							Key:   "user_id",
-							Match: &pb.Match{MatchValue: &pb.Match_Keyword{Keyword: userID}},
-						},
-					},
-				},
-				{
-					ConditionOneOf: &pb.Condition_Field{
-						Field: &pb.FieldCondition{
-							Key:   "consolidation_status",
-							Match: &pb.Match{MatchValue: &pb.Match_Keyword{Keyword: string(models.StatusPending)}},
-						},
-					},
-				},
+				matchKeyword("user_id", userID),
+				matchKeyword("consolidation_status", string(status)),
 			},
 		},
 		Exact: ptr(true),
@@ -364,16 +346,7 @@ func (q *QdrantStore) GetRecent(ctx context.Context, userID string, limit int) (
 	resp, err := q.points.Scroll(ctx, &pb.ScrollPoints{
 		CollectionName: q.cfg.Collection,
 		Filter: &pb.Filter{
-			Must: []*pb.Condition{
-				{
-					ConditionOneOf: &pb.Condition_Field{
-						Field: &pb.FieldCondition{
-							Key:   "user_id",
-							Match: &pb.Match{MatchValue: &pb.Match_Keyword{Keyword: userID}},
-						},
-					},
-				},
-			},
+			Must: []*pb.Condition{matchKeyword("user_id", userID)},
 		},
 		Limit:       ptr(uint32(limit)),
 		WithPayload: &pb.WithPayloadSelector{SelectorOptions: &pb.WithPayloadSelector_Enable{Enable: true}},
@@ -466,4 +439,30 @@ func getIntVal(payload map[string]*pb.Value, key string) int64 {
 
 func ptr[T any](v T) *T {
 	return &v
+}
+
+// matchKeyword builds the keyword-equality field condition this file repeated
+// six times inline.
+func matchKeyword(key, value string) *pb.Condition {
+	return &pb.Condition{
+		ConditionOneOf: &pb.Condition_Field{
+			Field: &pb.FieldCondition{
+				Key:   key,
+				Match: &pb.Match{MatchValue: &pb.Match_Keyword{Keyword: value}},
+			},
+		},
+	}
+}
+
+// pointIDSelector wraps UUID strings as a Qdrant point selector.
+func pointIDSelector(ids []string) *pb.PointsSelector {
+	pointIDs := make([]*pb.PointId, 0, len(ids))
+	for _, id := range ids {
+		pointIDs = append(pointIDs, &pb.PointId{PointIdOptions: &pb.PointId_Uuid{Uuid: id}})
+	}
+	return &pb.PointsSelector{
+		PointsSelectorOneOf: &pb.PointsSelector_Points{
+			Points: &pb.PointsIdsList{Ids: pointIDs},
+		},
+	}
 }

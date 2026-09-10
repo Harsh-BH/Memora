@@ -1,0 +1,77 @@
+ingested 1640 turns over 70 instances (0 newly embedded)
+[26/70] 618f13b2 rounds=1 pending_after=0 
+[70/70] 07741c45 rounds=1 pending_after=0 
+[17/70] 08e075c7 rounds=1 pending_after=0 
+[30/70] 6a27ffc2 rounds=1 pending_after=0 
+[1/70] 6a1eabeb rounds=1 pending_after=0 
+[35/70] e61a7584 rounds=1 pending_after=0 
+[9/70] ce6d2d27 rounds=1 pending_after=0 
+[32/70] 18bc8abd rounds=1 pending_after=0 
+[31/70] 2133c1b5 rounds=1 pending_after=0 
+[6/70] d7c942c3 rounds=1 pending_after=0 
+[7/70] 71315a70 rounds=1 pending_after=0 
+[34/70] 7a87bd0c rounds=2 pending_after=1 
+[36/70] 1cea1afa rounds=2 pending_after=1 
+[53/70] 69fee5aa rounds=2 pending_after=9 
+[38/70] 8fb83627 rounds=1 pending_after=24 
+[8/70] 89941a93 rounds=2 pending_after=6 
+[37/70] ed4ddc30 rounds=1 pending_after=24 
+[41/70] 4b24c848 rounds=1 pending_after=24 
+[39/70] b01defab rounds=1 pending_after=24 
+[43/70] 603deb26 rounds=1 pending_after=22 
+[40/70] 0e4e4c46 rounds=1 pending_after=24 
+[42/70] 7e974930 rounds=1 pending_after=24 
+[44/70] 59524333 rounds=1 pending_after=22 
+[45/70] 5831f84d rounds=1 pending_after=22 
+[46/70] affe2881 rounds=1 pending_after=24 
+[48/70] e66b632c rounds=2 pending_after=0 
+[47/70] 50635ada rounds=2 pending_after=0 
+[51/70] cc5ded98 rounds=1 pending_after=0 
+[50/70] f685340e rounds=1 pending_after=0 
+[49/70] 0ddfec37 rounds=2 pending_after=0 
+[52/70] dfde3500 rounds=1 pending_after=0 
+[22/70] 45dc21b6 rounds=1 pending_after=0 
+[20/70] 2698e78f rounds=1 pending_after=0 
+[19/70] 41698283 rounds=1 pending_after=0 
+[21/70] b6019101 rounds=1 pending_after=0 
+[54/70] 7401057b rounds=1 pending_after=0 
+[24/70] 6071bd76 rounds=1 pending_after=0 
+[23/70] 5a4f22c0 rounds=1 pending_after=0 
+[55/70] cf22b7bf rounds=1 pending_after=0 
+[62/70] dad224aa rounds=1 pending_after=0 
+[56/70] a2f3aa27 rounds=1 pending_after=0 
+[57/70] c7dc5443 rounds=1 pending_after=0 
+[5/70] 945e3d21 rounds=1 pending_after=0 
+[3/70] 830ce83f rounds=1 pending_after=0 
+[29/70] 01493427 rounds=1 pending_after=0 
+[4/70] 852ce960 rounds=1 pending_after=0 
+[25/70] e493bb7c rounds=1 pending_after=0 
+[66/70] c6853660 rounds=1 pending_after=0 
+[63/70] ba61f0b9 rounds=1 pending_after=0 
+[58/70] 06db6396 rounds=1 pending_after=0 
+[59/70] 3ba21379 rounds=1 pending_after=0 
+[60/70] 9bbe84a2 rounds=1 pending_after=0 
+[61/70] 10e09553 rounds=1 pending_after=0 
+[65/70] 5c40ec5b rounds=1 pending_after=0 
+[64/70] 42ec0761 rounds=1 pending_after=0 
+[13/70] 184da446 rounds=1 pending_after=0 
+[14/70] 031748ae rounds=1 pending_after=0 
+[15/70] 4d6b87c8 rounds=1 pending_after=0 
+[11/70] 07741c44 rounds=1 pending_after=0 
+[68/70] 0977f2af rounds=1 pending_after=0 
+[67/70] 26bdc477 rounds=1 pending_after=0 
+[10/70] 9ea5eabc rounds=1 pending_after=0 
+[16/70] 0f05491a rounds=1 pending_after=0 
+[69/70] 89941a94 rounds=1 pending_after=0 
+[27/70] 72e3ee87 rounds=1 pending_after=0 
+[2/70] 6aeb4375 rounds=2 pending_after=23 
+[33/70] db467c8c rounds=2 pending_after=2 
+[12/70] a1eacc2a rounds=2 pending_after=2 
+[28/70] c4ea545c rounds=1 pending_after=24 
+[18/70] f9e8c073 rounds=2 pending_after=14 
+
+=== FROZEN ===
+artifact eval/out/consolidation_triples.json
+sha256   cee249f2da38413bb6489c5631299756a531aa70cbf75498c06c5046d2f040ac
+clusters 656  triples 5597  cli_calls 1528  cli_failures 220
+llm wall 1h1m6s  total wall 1h1m10s

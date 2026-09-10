@@ -110,7 +110,15 @@ func main() {
 	defer asynqClient.Close()
 
 	// --- LLM Provider ---
-	llmProvider := llm.NewOpenAIProvider(cfg.LLM)
+	var llmProvider llm.Provider = llm.NewOpenAIProvider(cfg.LLM)
+	if cfg.LLM.Provider == "claude-cli" {
+		p, err := llm.NewClaudeCLIProvider(cfg.LLM)
+		if err != nil {
+			slog.Error("claude-cli provider unavailable", "error", err)
+			os.Exit(1)
+		}
+		llmProvider = p
+	}
 
 	// --- Domain Services ---
 

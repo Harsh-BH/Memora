@@ -1,0 +1,134 @@
+{
+  "generated_at": "2026-08-31T20:23:53Z",
+  "corpus_sha256": "821a2034d219ab45846873dd14c14f12cfe7776e73527a483f9dac095d38620c",
+  "max_seq_len": 256,
+  "dim": 384,
+  "ku_permissive_instances": 70,
+  "measured": {
+    "d_current_nearest_nongold_p50": 0.21676069553337152,
+    "d_stale_current_p50": 0.5164587520085293,
+    "dense_top1_rate": 0.07142857142857142,
+    "false_neighbour_within_0.3": 0.8571428571428571,
+    "flat_cosine_prefers_current": 0.4714285714285714,
+    "gold_pairs_within_eps_0.3": 0.08571428571428572,
+    "ku_strict_n": 48,
+    "lexical_top1_rate": 0.32857142857142857,
+    "truncated_at_256_frac": 0.43686131386861315
+  },
+  "recorded_provisional": {
+    "d_current_nearest_nongold_p50": 0.217,
+    "d_stale_current_p50": 0.514,
+    "dense_top1_rate": 0.07142857142857142,
+    "false_neighbour_within_0.3": 0.8571428571428571,
+    "flat_cosine_prefers_current": 0.4714285714285714,
+    "gold_pairs_within_eps_0.3": 0.08571428571428572,
+    "ku_strict_n": 49,
+    "lexical_top1_rate": 0.21428571428571427,
+    "truncated_at_256_frac": 0.449
+  },
+  "delta_measured_minus_recorded": {
+    "d_current_nearest_nongold_p50": -0.0002393044666284816,
+    "d_stale_current_p50": 0.002458752008529297,
+    "dense_top1_rate": 0,
+    "false_neighbour_within_0.3": 0,
+    "flat_cosine_prefers_current": 0,
+    "gold_pairs_within_eps_0.3": 0,
+    "ku_strict_n": -1,
+    "lexical_top1_rate": 0.1142857142857143,
+    "truncated_at_256_frac": -0.012138686131386855
+  },
+  "percentiles": {
+    "answer_char_offset_in_gold_turn": [
+      {
+        "q": 0.5,
+        "v": 182
+      },
+      {
+        "q": 0.9,
+        "v": 343
+      },
+      {
+        "q": 1,
+        "v": 491
+      }
+    ],
+    "d_current_nearest_nongold": [
+      {
+        "q": 0.1,
+        "v": 0.12309630822299933
+      },
+      {
+        "q": 0.5,
+        "v": 0.21676069553337152
+      },
+      {
+        "q": 0.9,
+        "v": 0.30973303728560453
+      }
+    ],
+    "d_stale_current": [
+      {
+        "q": 0.1,
+        "v": 0.32536472853072906
+      },
+      {
+        "q": 0.25,
+        "v": 0.3891780217456501
+      },
+      {
+        "q": 0.5,
+        "v": 0.5164587520085293
+      },
+      {
+        "q": 0.75,
+        "v": 0.6249167956026813
+      },
+      {
+        "q": 0.9,
+        "v": 0.7049101476161402
+      }
+    ],
+    "dense_stale_rank": [
+      {
+        "q": 0.5,
+        "v": 8
+      },
+      {
+        "q": 0.9,
+        "v": 16
+      }
+    ],
+    "lexical_stale_rank": [
+      {
+        "q": 0.5,
+        "v": 2
+      },
+      {
+        "q": 0.9,
+        "v": 7
+      }
+    ]
+  },
+  "embedder_throughput": [
+    {
+      "max_seq_len": 128,
+      "texts": 300,
+      "seconds": 3.4880874840000002,
+      "texts_per_second": 86.00701713363333,
+      "projected_minutes_for_10960_turns": 2.1238577124800004,
+      "fraction_of_turns_truncated": 0.498448905109489
+    },
+    {
+      "max_seq_len": 256,
+      "texts": 300,
+      "seconds": 6.588961318,
+      "texts_per_second": 45.530696800487725,
+      "projected_minutes_for_10960_turns": 4.011945335848889,
+      "fraction_of_turns_truncated": 0.43686131386861315
+    }
+  ],
+  "notes": [
+    "KU-strict is EXPLORATORY and its rule is underspecified in the design pass ('numeric-token containment ... else answer-tokens-minus-question-tokens overlap strictly greater and \u003e= 0.50'). The reading implemented here is documented in kuStrict(). The PRIMARY set is KU-permissive n=70 and does not change whatever this number is (1.2).",
+    "Truncation is measured with the model's own WordPiece tokenizer (llm.CountTokens), not the design pass's character-count proxy. Truncation is uniform across arms -- a validity limit, not a confound, because every arm reads the same vectors (4.9)."
+  ]
+}

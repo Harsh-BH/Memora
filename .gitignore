@@ -27,3 +27,9 @@ pnpm-debug.log*
 # downloaded runtime/model binaries (see cma/third_party/README.md to re-fetch)
 /cma/third_party/*
 !/cma/third_party/README.md
+
+# consolidation run by-products: the .stream.jsonl is crash insurance whose
+# records are already in the committed artifact, and the .stderr is the .log
+# duplicated by the slog MultiWriter. The artifacts and .log files ARE tracked.
+/cma/eval/out/*.stream.jsonl
+/cma/eval/out/*.stderr

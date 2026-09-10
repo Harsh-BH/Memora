@@ -165,18 +165,7 @@ func (o *OpenAIProvider) syntheticTokenProbs(text string) []TokenProb {
 // ExtractTriples extracts atomic (Subject, Predicate, Object) triples from text
 // using structured LLM output during the consolidation Sleep cycle.
 func (o *OpenAIProvider) ExtractTriples(ctx context.Context, content string) ([]models.Triple, error) {
-	prompt := fmt.Sprintf(`Extract all factual relationships from the following text as atomic triples.
-Return a JSON array where each element has:
-- "subject": the entity performing or being described
-- "predicate": the relationship or action
-- "object": the target entity or value
-- "confidence": a float between 0.0 and 1.0 indicating certainty
-
-Only extract clearly stated facts. Do not infer or hallucinate relationships.
-Return ONLY valid JSON, no markdown formatting.
-
-Text:
-%s`, content)
+	prompt := extractTriplesPrompt(content)
 
 	resp, err := o.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: o.model,
@@ -219,17 +208,7 @@ Text:
 
 // Synthesize generates a gist proposition from a cluster of episodes.
 func (o *OpenAIProvider) Synthesize(ctx context.Context, episodes []models.Episode) (string, error) {
-	var sb strings.Builder
-	for i, ep := range episodes {
-		sb.WriteString(fmt.Sprintf("Episode %d (t=%s): %s\n", i+1, ep.Timestamp.Format("2006-01-02T15:04"), ep.Content))
-	}
-
-	prompt := fmt.Sprintf(`Synthesize the following episodic memory fragments into a single concise semantic proposition.
-The proposition should capture the core factual knowledge that persists across episodes.
-Be atomic and precise. Return only the proposition text.
-
-Fragments:
-%s`, sb.String())
+	prompt := synthesizePrompt(episodes)
 
 	resp, err := o.client.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
 		Model: o.model,
@@ -324,12 +303,7 @@ func (o *OpenAIProvider) Generate(ctx context.Context, prompt string) (string, e
 // CountTokens returns an approximate token count using the ~4 chars per token heuristic.
 // For production, integrate tiktoken.
 func (o *OpenAIProvider) CountTokens(text string) int {
-	// Reasonable approximation: 1 token ≈ 4 characters for English text.
-	count := len(text) / 4
-	if count == 0 && len(text) > 0 {
-		count = 1
-	}
-	return count
+	return approxTokens(text)
 }
 
 // --- Helpers ---

@@ -24,7 +24,13 @@ redis:
   db: 0
 
 llm:
+  # "openai" (needs OPENAI_API_KEY) or "claude-cli" (shells out to the
+  # logged-in `claude -p`; no key, ~6s/synthesize + ~16s/extract, see
+  # internal/llm/claude_cli.go). Embeddings are NEVER routed to claude-cli.
   provider: "openai"
+  # claude-cli only; defaults 120 / 2 if unset.
+  timeout_seconds: 120
+  max_concurrency: 2
   api_key: "${OPENAI_API_KEY}"
   model: "gpt-4o"
   embedding_model: "text-embedding-3-small"
